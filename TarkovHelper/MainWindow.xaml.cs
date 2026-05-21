@@ -51,6 +51,10 @@ public partial class MainWindow : Window
         _settingsService.HasUnheardEditionChanged += OnEditionChanged;
         _settingsService.PrestigeLevelChanged += OnPrestigeLevelChanged;
 
+        // Reflect game mode (PvP/PvE) changes in the title bar toggle
+        ProfileService.Instance.ActiveProfileChanged += (_, args) =>
+            Dispatcher.Invoke(() => UpdateGameModeUI(args.GameMode, args.IsAutoDetected));
+
         // Apply dark title bar
         SourceInitialized += (s, e) => EnableDarkTitleBar();
     }
@@ -89,6 +93,14 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         _isLoading = true;
+
+        // Ensure the user DB (profile schema migration) and active game mode are ready
+        // before any progress/settings UI reads from them.
+        await UserDataDbService.Instance.InitializeAsync();
+        await ProfileService.Instance.InitializeAsync();
+
+        // Reflect the loaded game mode in the title bar toggle
+        UpdateGameModeUI(ProfileService.Instance.ActiveGameMode, ProfileService.Instance.IsAutoDetected);
 
         // Apply saved language setting to UI
         CmbLanguage.SelectedIndex = _loc.CurrentLanguage switch
@@ -457,6 +469,33 @@ public partial class MainWindow : Window
     /// <summary>
     /// Update player level UI
     /// </summary>
+    #region Game Mode (PvP / PvE)
+
+    private void BtnPvP_Click(object sender, RoutedEventArgs e)
+    {
+        ProfileService.Instance.SetActiveGameMode(GameMode.PVP);
+        // Re-sync in case the click toggled the already-active button (no event fires then)
+        UpdateGameModeUI(ProfileService.Instance.ActiveGameMode, ProfileService.Instance.IsAutoDetected);
+    }
+
+    private void BtnPvE_Click(object sender, RoutedEventArgs e)
+    {
+        ProfileService.Instance.SetActiveGameMode(GameMode.PVE);
+        UpdateGameModeUI(ProfileService.Instance.ActiveGameMode, ProfileService.Instance.IsAutoDetected);
+    }
+
+    /// <summary>
+    /// Update the title bar PvP/PvE toggle to reflect the active game mode.
+    /// </summary>
+    private void UpdateGameModeUI(GameMode mode, bool isAuto)
+    {
+        BtnPvP.IsChecked = mode == GameMode.PVP;
+        BtnPvE.IsChecked = mode == GameMode.PVE;
+        TxtAutoIndicator.Visibility = isAuto ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    #endregion
+
     private void UpdatePlayerLevelUI()
     {
         var level = _settingsService.PlayerLevel;
