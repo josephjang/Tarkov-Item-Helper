@@ -20,7 +20,9 @@ namespace TarkovHelper.Services
 
         // Debounce save timer
         private System.Timers.Timer? _saveTimer;
-        private readonly HashSet<string> _pendingSaves = new(StringComparer.OrdinalIgnoreCase);
+        // item normalized name -> profileId captured at dirty-time, so a pending save
+        // always lands on the profile that was active when the change was made
+        private readonly Dictionary<string, string> _pendingSaves = new(StringComparer.OrdinalIgnoreCase);
 
         public event EventHandler? InventoryChanged;
 
@@ -28,6 +30,7 @@ namespace TarkovHelper.Services
         {
             LoadInventory();
             InitializeSaveTimer();
+            ProfileService.Instance.ActiveProfileChanged += (_, _) => _ = ReloadForProfileAsync();
         }
 
         private void InitializeSaveTimer()
@@ -42,7 +45,7 @@ namespace TarkovHelper.Services
 
         private void SavePendingItems()
         {
-            List<string> itemsToSave;
+            List<KeyValuePair<string, string>> itemsToSave;
             lock (_lock)
             {
                 if (_pendingSaves.Count == 0) return;
@@ -52,8 +55,10 @@ namespace TarkovHelper.Services
 
             Task.Run(async () =>
             {
-                foreach (var itemName in itemsToSave)
+                foreach (var entry in itemsToSave)
                 {
+                    var itemName = entry.Key;
+                    var profileId = entry.Value;
                     try
                     {
                         int firQty, nonFirQty;
@@ -70,7 +75,7 @@ namespace TarkovHelper.Services
                                 nonFirQty = 0;
                             }
                         }
-                        await _userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty, ProfileService.Instance.ActiveProfileId);
+                        await _userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty, profileId);
                     }
                     catch (Exception ex)
                     {
@@ -274,7 +279,9 @@ namespace TarkovHelper.Services
         {
             lock (_lock)
             {
-                _pendingSaves.Add(itemNormalizedName);
+                // Capture the active profile at dirty-time so a later profile switch
+                // can't redirect this save to the wrong profile.
+                _pendingSaves[itemNormalizedName] = ProfileService.Instance.ActiveProfileId;
             }
             _inventoryData.LastUpdated = DateTime.UtcNow;
             _saveTimer?.Stop();
@@ -289,6 +296,20 @@ namespace TarkovHelper.Services
             {
                 await LoadInventoryFromDbAsync();
             }).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Reload inventory for the active game mode and notify the UI.
+        /// Pending debounced saves are flushed first (using their captured profile ids)
+        /// so the previous profile's edits are persisted before its data is swapped out.
+        /// </summary>
+        public async Task ReloadForProfileAsync()
+        {
+            _saveTimer?.Stop();
+            SavePendingItems();
+
+            await LoadInventoryFromDbAsync();
+            InventoryChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private async Task LoadInventoryFromDbAsync()

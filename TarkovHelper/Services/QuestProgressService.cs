@@ -11,6 +11,11 @@ namespace TarkovHelper.Services
         private static QuestProgressService? _instance;
         public static QuestProgressService Instance => _instance ??= new QuestProgressService();
 
+        private QuestProgressService()
+        {
+            ProfileService.Instance.ActiveProfileChanged += (_, _) => _ = ReloadForProfileAsync();
+        }
+
         private Dictionary<string, QuestStatus> _questProgress = new();
         private Dictionary<string, TarkovTask> _tasksByNormalizedName = new();
         private Dictionary<string, TarkovTask> _tasksByBsgId = new();
@@ -1375,6 +1380,17 @@ namespace TarkovHelper.Services
                 // DB에서 로드
                 await LoadProgressFromDbAsync();
             }).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Reload all progress (quest + objective) for the active game mode and notify the UI.
+        /// Called when the user switches profiles.
+        /// </summary>
+        public async Task ReloadForProfileAsync()
+        {
+            await LoadProgressFromDbAsync();
+            await LoadObjectiveProgressFromDbAsync();
+            ProgressChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private async Task LoadProgressFromDbAsync()
