@@ -724,7 +724,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                await _userDataDb.SaveQuestProgressBatchAsync(changedQuests);
+                await _userDataDb.SaveQuestProgressBatchAsync(changedQuests, ProfileService.Instance.ActiveProfileId);
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Batch saved {changedQuests.Count} quest changes");
             }
             catch (Exception ex)
@@ -887,7 +887,7 @@ namespace TarkovHelper.Services
             if (changedItems.Count > 0)
             {
                 // Save all changes in one batch transaction
-                await _userDataDb.SaveQuestProgressBatchAsync(changedItems);
+                await _userDataDb.SaveQuestProgressBatchAsync(changedItems, ProfileService.Instance.ActiveProfileId);
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Batch saved {changedItems.Count} quest changes");
                 ProgressChanged?.Invoke(this, EventArgs.Empty);
             }
@@ -932,7 +932,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.SaveQuestProgressAsync(taskId ?? taskKey, task.NormalizedName, QuestStatus.Failed);
+                    await _userDataDb.SaveQuestProgressAsync(taskId ?? taskKey, task.NormalizedName, QuestStatus.Failed, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -964,11 +964,12 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.DeleteQuestProgressAsync(taskId ?? taskKey);
+                    var profileId = ProfileService.Instance.ActiveProfileId;
+                    await _userDataDb.DeleteQuestProgressAsync(taskId ?? taskKey, profileId);
                     // Also delete by NormalizedName for clean migration
                     if (!string.IsNullOrEmpty(task.NormalizedName) && task.NormalizedName != taskKey)
                     {
-                        await _userDataDb.DeleteQuestProgressAsync(task.NormalizedName);
+                        await _userDataDb.DeleteQuestProgressAsync(task.NormalizedName, profileId);
                     }
                 }
                 catch (Exception ex)
@@ -992,8 +993,9 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.ClearAllQuestProgressAsync();
-                    await _userDataDb.ClearAllObjectiveProgressAsync();
+                    var profileId = ProfileService.Instance.ActiveProfileId;
+                    await _userDataDb.ClearAllQuestProgressAsync(profileId);
+                    await _userDataDb.ClearAllObjectiveProgressAsync(profileId);
                     System.Diagnostics.Debug.WriteLine("[QuestProgressService] All progress cleared from DB");
                 }
                 catch (Exception ex)
@@ -1207,13 +1209,14 @@ namespace TarkovHelper.Services
             {
                 foreach (var item in items)
                 {
+                    var profileId = ProfileService.Instance.ActiveProfileId;
                     if (item.IsCompleted)
                     {
-                        await _userDataDb.SaveObjectiveProgressAsync(item.Key, item.QuestId, true);
+                        await _userDataDb.SaveObjectiveProgressAsync(item.Key, item.QuestId, true, profileId);
                     }
                     else
                     {
-                        await _userDataDb.DeleteObjectiveProgressAsync(item.Key);
+                        await _userDataDb.DeleteObjectiveProgressAsync(item.Key, profileId);
                     }
                 }
             }
@@ -1306,7 +1309,7 @@ namespace TarkovHelper.Services
                         id = task.Ids?.FirstOrDefault() ?? normalizedName;
                     }
 
-                    await _userDataDb.SaveQuestProgressAsync(id, normalizedName, status);
+                    await _userDataDb.SaveQuestProgressAsync(id, normalizedName, status, ProfileService.Instance.ActiveProfileId);
                 }
             }
             catch (Exception ex)
@@ -1330,7 +1333,7 @@ namespace TarkovHelper.Services
                         id = task.Ids?.FirstOrDefault() ?? normalizedName;
                     }
 
-                    await _userDataDb.SaveQuestProgressAsync(id, normalizedName, status);
+                    await _userDataDb.SaveQuestProgressAsync(id, normalizedName, status, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -1354,7 +1357,7 @@ namespace TarkovHelper.Services
                         id = task.Ids?.FirstOrDefault() ?? normalizedName;
                     }
 
-                    await _userDataDb.DeleteQuestProgressAsync(id);
+                    await _userDataDb.DeleteQuestProgressAsync(id, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -1378,7 +1381,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var dbProgress = await _userDataDb.LoadQuestProgressAsync();
+                var dbProgress = await _userDataDb.LoadQuestProgressAsync(ProfileService.Instance.ActiveProfileId);
 
                 _questProgress.Clear();
                 foreach (var kvp in dbProgress)
@@ -1419,7 +1422,7 @@ namespace TarkovHelper.Services
                         }
                     }
 
-                    await _userDataDb.SaveObjectiveProgressAsync(kvp.Key, questId, kvp.Value);
+                    await _userDataDb.SaveObjectiveProgressAsync(kvp.Key, questId, kvp.Value, ProfileService.Instance.ActiveProfileId);
                 }
             }
             catch (Exception ex)
@@ -1437,7 +1440,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.SaveObjectiveProgressAsync(key, questId, isCompleted);
+                    await _userDataDb.SaveObjectiveProgressAsync(key, questId, isCompleted, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -1455,7 +1458,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.DeleteObjectiveProgressAsync(key);
+                    await _userDataDb.DeleteObjectiveProgressAsync(key, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -1474,7 +1477,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var dbProgress = await _userDataDb.LoadObjectiveProgressAsync();
+                var dbProgress = await _userDataDb.LoadObjectiveProgressAsync(ProfileService.Instance.ActiveProfileId);
 
                 _objectiveProgress.Clear();
                 foreach (var kvp in dbProgress)

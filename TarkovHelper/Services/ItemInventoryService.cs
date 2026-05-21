@@ -70,7 +70,7 @@ namespace TarkovHelper.Services
                                 nonFirQty = 0;
                             }
                         }
-                        await _userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty);
+                        await _userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty, ProfileService.Instance.ActiveProfileId);
                     }
                     catch (Exception ex)
                     {
@@ -257,7 +257,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.ClearAllItemInventoryAsync();
+                    await _userDataDb.ClearAllItemInventoryAsync(ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -295,7 +295,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var items = await _userDataDb.LoadItemInventoryAsync();
+                var items = await _userDataDb.LoadItemInventoryAsync(ProfileService.Instance.ActiveProfileId);
                 var newData = new ItemInventoryData
                 {
                     LastUpdated = DateTime.UtcNow,

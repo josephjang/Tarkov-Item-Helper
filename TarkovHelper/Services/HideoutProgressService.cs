@@ -112,7 +112,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.SaveHideoutProgressAsync(normalizedName, level);
+                    await _userDataDb.SaveHideoutProgressAsync(normalizedName, level, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -296,7 +296,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.ClearAllHideoutProgressAsync();
+                    await _userDataDb.ClearAllHideoutProgressAsync(ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -320,7 +320,7 @@ namespace TarkovHelper.Services
             {
                 foreach (var kvp in _progress.Modules)
                 {
-                    await _userDataDb.SaveHideoutProgressAsync(kvp.Key, kvp.Value);
+                    await _userDataDb.SaveHideoutProgressAsync(kvp.Key, kvp.Value, ProfileService.Instance.ActiveProfileId);
                 }
             }
             catch (Exception ex)
@@ -343,7 +343,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var modules = await _userDataDb.LoadHideoutProgressAsync();
+                var modules = await _userDataDb.LoadHideoutProgressAsync(ProfileService.Instance.ActiveProfileId);
                 _progress = new HideoutProgress
                 {
                     Modules = new Dictionary<string, int>(modules, StringComparer.OrdinalIgnoreCase),

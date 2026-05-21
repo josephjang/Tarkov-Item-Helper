@@ -285,4 +285,63 @@ public static class TestMenu
         // 클립보드에도 복사
         Clipboard.SetText(sb.ToString());
     }
+
+    [TestMenu("Test: GameMode Migration")]
+    public static async Task TestGameModeMigrationAsync()
+    {
+        var db = UserDataDbService.Instance;
+        await db.InitializeAsync();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("=== Profile Schema Test ===");
+        sb.AppendLine($"DB: {db.DatabasePath}");
+        sb.AppendLine($"Active profile: {ProfileService.Instance.ActiveProfileId}");
+        sb.AppendLine();
+
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db.DatabasePath};Mode=ReadOnly");
+        await conn.OpenAsync();
+
+        var tables = new[] { "QuestProgress", "ObjectiveProgress", "HideoutProgress", "ItemInventory" };
+        foreach (var table in tables)
+        {
+            var hasCol = new Microsoft.Data.Sqlite.SqliteCommand(
+                $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='ProfileId'", conn);
+            var has = Convert.ToInt32(await hasCol.ExecuteScalarAsync()) > 0;
+
+            var pvpCmd = new Microsoft.Data.Sqlite.SqliteCommand(
+                $"SELECT COUNT(*) FROM {table} WHERE ProfileId='pvp'", conn);
+            var pveCmd = new Microsoft.Data.Sqlite.SqliteCommand(
+                $"SELECT COUNT(*) FROM {table} WHERE ProfileId='pve'", conn);
+
+            var pvpRows = Convert.ToInt32(await pvpCmd.ExecuteScalarAsync());
+            var pveRows = Convert.ToInt32(await pveCmd.ExecuteScalarAsync());
+
+            sb.AppendLine($"{table}:");
+            sb.AppendLine($"  ProfileId column: {has}");
+            sb.AppendLine($"  PvP rows: {pvpRows}  |  PvE rows: {pveRows}");
+        }
+
+        MessageBox.Show(sb.ToString(), "Migration Test");
+    }
+
+    [TestMenu("Test: Profile Switch")]
+    public static async Task TestProfileSwitchAsync()
+    {
+        var sb = new StringBuilder();
+        var profile = ProfileService.Instance;
+
+        sb.AppendLine($"Current: {profile.ActiveGameMode} (auto={profile.IsAutoDetected})");
+
+        var target = profile.ActiveGameMode == Models.GameMode.PVP ? Models.GameMode.PVE : Models.GameMode.PVP;
+        profile.SetActiveGameMode(target);
+        await Task.Delay(300);
+
+        var questCount = QuestProgressService.Instance.AllTasks?.Count(t =>
+            QuestProgressService.Instance.GetStatus(t) == QuestStatus.Done) ?? 0;
+
+        sb.AppendLine($"Switched to: {profile.ActiveGameMode}");
+        sb.AppendLine($"Done quests in this profile: {questCount}");
+
+        MessageBox.Show(sb.ToString(), "Profile Switch Test");
+    }
 }
