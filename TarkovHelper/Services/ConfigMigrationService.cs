@@ -341,7 +341,7 @@ public sealed class ConfigMigrationService
 
             if (progressItems.Count > 0)
             {
-                await userDataDb.SaveQuestProgressBatchAsync(progressItems);
+                await userDataDb.SaveQuestProgressBatchAsync(progressItems, ProfileService.PvpProfileId);
             }
 
             return (progressItems.Count - _unmappedQuests.Count, null);
@@ -410,13 +410,13 @@ public sealed class ConfigMigrationService
                 if (stationByNormalizedName.TryGetValue(normalizedName, out var station))
                 {
                     // HideoutProgress는 StationId (NormalizedName)를 사용
-                    await userDataDb.SaveHideoutProgressAsync(station.NormalizedName!, level);
+                    await userDataDb.SaveHideoutProgressAsync(station.NormalizedName!, level, ProfileService.PvpProfileId);
                     successCount++;
                 }
                 else
                 {
                     // 스테이션을 찾지 못함 - 그대로 저장 시도
-                    await userDataDb.SaveHideoutProgressAsync(normalizedName, level);
+                    await userDataDb.SaveHideoutProgressAsync(normalizedName, level, ProfileService.PvpProfileId);
                     _unmappedHideouts.Add(normalizedName);
                 }
             }
@@ -457,7 +457,7 @@ public sealed class ConfigMigrationService
 
                 if (firQty > 0 || nonFirQty > 0)
                 {
-                    await userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty);
+                    await userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty, ProfileService.PvpProfileId);
                     count++;
                 }
             }

@@ -81,45 +81,60 @@ public sealed class UserDataDbService
 
     private async Task CreateTablesAsync(SqliteConnection connection)
     {
-        // First, check and fix ItemInventory schema if needed
-        await MigrateItemInventorySchemaAsync(connection);
+        await MigrateToProfileSchemaAsync(connection);
 
         var createTablesSql = @"
             -- 퀘스트 진행 상태
             CREATE TABLE IF NOT EXISTS QuestProgress (
-                Id TEXT PRIMARY KEY,
+                ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                Id TEXT NOT NULL,
                 NormalizedName TEXT,
                 Status TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (ProfileId, Id)
             );
 
             -- 퀘스트 목표 진행 상태
             CREATE TABLE IF NOT EXISTS ObjectiveProgress (
-                Id TEXT PRIMARY KEY,
+                ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                Id TEXT NOT NULL,
                 QuestId TEXT,
                 IsCompleted INTEGER NOT NULL DEFAULT 0,
-                UpdatedAt TEXT NOT NULL
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (ProfileId, Id)
             );
 
             -- 아이템 인벤토리
             CREATE TABLE IF NOT EXISTS ItemInventory (
-                ItemNormalizedName TEXT PRIMARY KEY,
+                ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                ItemNormalizedName TEXT NOT NULL,
                 FirQuantity INTEGER NOT NULL DEFAULT 0,
                 NonFirQuantity INTEGER NOT NULL DEFAULT 0,
-                UpdatedAt TEXT NOT NULL
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (ProfileId, ItemNormalizedName)
             );
 
             -- 하이드아웃 진행
             CREATE TABLE IF NOT EXISTS HideoutProgress (
-                StationId TEXT PRIMARY KEY,
+                ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                StationId TEXT NOT NULL,
                 Level INTEGER NOT NULL DEFAULT 0,
-                UpdatedAt TEXT NOT NULL
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (ProfileId, StationId)
             );
 
-            -- 사용자 설정
+            -- 사용자 설정 (전역)
             CREATE TABLE IF NOT EXISTS UserSettings (
                 Key TEXT PRIMARY KEY,
                 Value TEXT NOT NULL
+            );
+
+            -- 프로필별 설정
+            CREATE TABLE IF NOT EXISTS ProfileSettings (
+                ProfileId TEXT NOT NULL,
+                Key TEXT NOT NULL,
+                Value TEXT NOT NULL,
+                PRIMARY KEY (ProfileId, Key)
             );
 
             -- 레이드 히스토리
@@ -148,8 +163,12 @@ public sealed class UserDataDbService
             );
 
             -- 인덱스
+            CREATE INDEX IF NOT EXISTS idx_quest_progress_profile ON QuestProgress(ProfileId);
             CREATE INDEX IF NOT EXISTS idx_quest_progress_normalized ON QuestProgress(NormalizedName);
+            CREATE INDEX IF NOT EXISTS idx_objective_progress_profile ON ObjectiveProgress(ProfileId);
             CREATE INDEX IF NOT EXISTS idx_objective_progress_quest ON ObjectiveProgress(QuestId);
+            CREATE INDEX IF NOT EXISTS idx_hideout_progress_profile ON HideoutProgress(ProfileId);
+            CREATE INDEX IF NOT EXISTS idx_item_inventory_profile ON ItemInventory(ProfileId);
             CREATE INDEX IF NOT EXISTS idx_raid_history_start_time ON RaidHistory(StartTime);
             CREATE INDEX IF NOT EXISTS idx_raid_history_map_key ON RaidHistory(MapKey);
             CREATE INDEX IF NOT EXISTS idx_raid_history_raid_type ON RaidHistory(RaidType);
@@ -160,47 +179,105 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ItemInventory 테이블 스키마 마이그레이션 (오래된 스키마 수정)
+    /// ProfileId 복합 기본 키 스키마로 마이그레이션 (기존 단일 PK 스키마에서 업그레이드)
     /// </summary>
-    private async Task MigrateItemInventorySchemaAsync(SqliteConnection connection)
+    private async Task MigrateToProfileSchemaAsync(SqliteConnection connection)
     {
         try
         {
-            // Check if ItemInventory table exists
-            var checkTableSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ItemInventory'";
-            await using var checkCmd = new SqliteCommand(checkTableSql, connection);
-            var tableExists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0;
+            // QuestProgress 테이블이 존재하는지 확인
+            var checkTableSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='QuestProgress'";
+            await using var checkTableCmd = new SqliteCommand(checkTableSql, connection);
+            var tableExists = Convert.ToInt32(await checkTableCmd.ExecuteScalarAsync()) > 0;
 
-            if (!tableExists) return;
+            if (!tableExists) return; // 신규 설치: 마이그레이션 불필요
 
-            // Check if ItemNormalizedName column exists
-            var checkColumnSql = "SELECT COUNT(*) FROM pragma_table_info('ItemInventory') WHERE name='ItemNormalizedName'";
-            await using var checkColCmd = new SqliteCommand(checkColumnSql, connection);
-            var columnExists = Convert.ToInt32(await checkColCmd.ExecuteScalarAsync()) > 0;
+            // ProfileId 컬럼이 이미 있으면 마이그레이션 완료된 상태
+            var checkColSql = "SELECT COUNT(*) FROM pragma_table_info('QuestProgress') WHERE name='ProfileId'";
+            await using var checkColCmd = new SqliteCommand(checkColSql, connection);
+            var hasProfileId = Convert.ToInt32(await checkColCmd.ExecuteScalarAsync()) > 0;
 
-            if (!columnExists)
+            if (hasProfileId) return; // 이미 마이그레이션됨
+
+            System.Diagnostics.Debug.WriteLine("[UserDataDbService] Migrating to profile schema...");
+
+            await using var transaction = await connection.BeginTransactionAsync();
+            try
             {
-                System.Diagnostics.Debug.WriteLine("[UserDataDbService] Migrating ItemInventory table schema...");
-
-                // Drop the old table and recreate with correct schema
                 var migrateSql = @"
-                    DROP TABLE IF EXISTS ItemInventory;
+                    -- QuestProgress
+                    ALTER TABLE QuestProgress RENAME TO QuestProgress_old;
+                    CREATE TABLE QuestProgress (
+                        ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                        Id TEXT NOT NULL,
+                        NormalizedName TEXT,
+                        Status TEXT NOT NULL,
+                        UpdatedAt TEXT NOT NULL,
+                        PRIMARY KEY (ProfileId, Id)
+                    );
+                    INSERT INTO QuestProgress (ProfileId, Id, NormalizedName, Status, UpdatedAt)
+                        SELECT 'pvp', Id, NormalizedName, Status, UpdatedAt FROM QuestProgress_old;
+                    DROP TABLE QuestProgress_old;
+
+                    -- ObjectiveProgress
+                    ALTER TABLE ObjectiveProgress RENAME TO ObjectiveProgress_old;
+                    CREATE TABLE ObjectiveProgress (
+                        ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                        Id TEXT NOT NULL,
+                        QuestId TEXT,
+                        IsCompleted INTEGER NOT NULL DEFAULT 0,
+                        UpdatedAt TEXT NOT NULL,
+                        PRIMARY KEY (ProfileId, Id)
+                    );
+                    INSERT INTO ObjectiveProgress (ProfileId, Id, QuestId, IsCompleted, UpdatedAt)
+                        SELECT 'pvp', Id, QuestId, IsCompleted, UpdatedAt FROM ObjectiveProgress_old;
+                    DROP TABLE ObjectiveProgress_old;
+
+                    -- HideoutProgress
+                    ALTER TABLE HideoutProgress RENAME TO HideoutProgress_old;
+                    CREATE TABLE HideoutProgress (
+                        ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                        StationId TEXT NOT NULL,
+                        Level INTEGER NOT NULL DEFAULT 0,
+                        UpdatedAt TEXT NOT NULL,
+                        PRIMARY KEY (ProfileId, StationId)
+                    );
+                    INSERT INTO HideoutProgress (ProfileId, StationId, Level, UpdatedAt)
+                        SELECT 'pvp', StationId, Level, UpdatedAt FROM HideoutProgress_old;
+                    DROP TABLE HideoutProgress_old;
+
+                    -- ItemInventory (covers any old schema variant)
+                    ALTER TABLE ItemInventory RENAME TO ItemInventory_old;
                     CREATE TABLE ItemInventory (
-                        ItemNormalizedName TEXT PRIMARY KEY,
+                        ProfileId TEXT NOT NULL DEFAULT 'pvp',
+                        ItemNormalizedName TEXT NOT NULL,
                         FirQuantity INTEGER NOT NULL DEFAULT 0,
                         NonFirQuantity INTEGER NOT NULL DEFAULT 0,
-                        UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        UpdatedAt TEXT NOT NULL,
+                        PRIMARY KEY (ProfileId, ItemNormalizedName)
                     );
+                    INSERT OR IGNORE INTO ItemInventory (ProfileId, ItemNormalizedName, FirQuantity, NonFirQuantity, UpdatedAt)
+                        SELECT 'pvp', ItemNormalizedName, FirQuantity, NonFirQuantity, UpdatedAt FROM ItemInventory_old
+                        WHERE ItemNormalizedName IS NOT NULL;
+                    DROP TABLE ItemInventory_old;
                 ";
-                await using var migrateCmd = new SqliteCommand(migrateSql, connection);
+
+                await using var migrateCmd = new SqliteCommand(migrateSql, connection, (SqliteTransaction)transaction);
                 await migrateCmd.ExecuteNonQueryAsync();
 
-                System.Diagnostics.Debug.WriteLine("[UserDataDbService] ItemInventory table migrated successfully");
+                await transaction.CommitAsync();
+                System.Diagnostics.Debug.WriteLine("[UserDataDbService] Profile schema migration completed");
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Profile schema migration failed: {ex.Message}");
+                throw;
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not SqliteException { SqliteErrorCode: 1 })
         {
-            System.Diagnostics.Debug.WriteLine($"[UserDataDbService] ItemInventory schema migration failed: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[UserDataDbService] MigrateToProfileSchemaAsync error: {ex.Message}");
         }
     }
 
@@ -209,7 +286,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 퀘스트 진행 상태 로드
     /// </summary>
-    public async Task<Dictionary<string, QuestStatus>> LoadQuestProgressAsync()
+    public async Task<Dictionary<string, QuestStatus>> LoadQuestProgressAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -219,8 +296,9 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "SELECT Id, NormalizedName, Status FROM QuestProgress";
+        var sql = "SELECT Id, NormalizedName, Status FROM QuestProgress WHERE ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -231,7 +309,6 @@ public sealed class UserDataDbService
 
             if (Enum.TryParse<QuestStatus>(statusStr, out var status))
             {
-                // NormalizedName을 키로 사용 (기존 호환성)
                 var key = normalizedName ?? id;
                 result[key] = status;
             }
@@ -243,7 +320,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 퀘스트 진행 상태 저장
     /// </summary>
-    public async Task SaveQuestProgressAsync(string id, string? normalizedName, QuestStatus status)
+    public async Task SaveQuestProgressAsync(string id, string? normalizedName, QuestStatus status, string profileId)
     {
         await InitializeAsync();
 
@@ -252,14 +329,15 @@ public sealed class UserDataDbService
         await connection.OpenAsync();
 
         var sql = @"
-            INSERT INTO QuestProgress (Id, NormalizedName, Status, UpdatedAt)
-            VALUES (@id, @normalizedName, @status, @updatedAt)
-            ON CONFLICT(Id) DO UPDATE SET
+            INSERT INTO QuestProgress (ProfileId, Id, NormalizedName, Status, UpdatedAt)
+            VALUES (@profileId, @id, @normalizedName, @status, @updatedAt)
+            ON CONFLICT(ProfileId, Id) DO UPDATE SET
                 NormalizedName = @normalizedName,
                 Status = @status,
                 UpdatedAt = @updatedAt";
 
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@normalizedName", normalizedName ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@status", status.ToString());
@@ -271,7 +349,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 여러 퀘스트 진행 상태를 배치로 저장 (트랜잭션 사용)
     /// </summary>
-    public async Task SaveQuestProgressBatchAsync(IEnumerable<(string Id, string? NormalizedName, QuestStatus Status)> progressItems)
+    public async Task SaveQuestProgressBatchAsync(IEnumerable<(string Id, string? NormalizedName, QuestStatus Status)> progressItems, string profileId)
     {
         await InitializeAsync();
 
@@ -283,9 +361,9 @@ public sealed class UserDataDbService
         try
         {
             var sql = @"
-                INSERT INTO QuestProgress (Id, NormalizedName, Status, UpdatedAt)
-                VALUES (@id, @normalizedName, @status, @updatedAt)
-                ON CONFLICT(Id) DO UPDATE SET
+                INSERT INTO QuestProgress (ProfileId, Id, NormalizedName, Status, UpdatedAt)
+                VALUES (@profileId, @id, @normalizedName, @status, @updatedAt)
+                ON CONFLICT(ProfileId, Id) DO UPDATE SET
                     NormalizedName = @normalizedName,
                     Status = @status,
                     UpdatedAt = @updatedAt";
@@ -295,6 +373,7 @@ public sealed class UserDataDbService
             foreach (var item in progressItems)
             {
                 await using var cmd = new SqliteCommand(sql, connection, (SqliteTransaction)transaction);
+                cmd.Parameters.AddWithValue("@profileId", profileId);
                 cmd.Parameters.AddWithValue("@id", item.Id);
                 cmd.Parameters.AddWithValue("@normalizedName", item.NormalizedName ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("@status", item.Status.ToString());
@@ -314,7 +393,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 퀘스트 진행 상태 삭제 (리셋)
     /// </summary>
-    public async Task DeleteQuestProgressAsync(string id)
+    public async Task DeleteQuestProgressAsync(string id, string profileId)
     {
         await InitializeAsync();
 
@@ -322,9 +401,10 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "DELETE FROM QuestProgress WHERE Id = @id OR NormalizedName = @id";
+        var sql = "DELETE FROM QuestProgress WHERE (Id = @id OR NormalizedName = @id) AND ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
 
         await cmd.ExecuteNonQueryAsync();
     }
@@ -332,7 +412,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 퀘스트 진행 상태 삭제
     /// </summary>
-    public async Task ClearAllQuestProgressAsync()
+    public async Task ClearAllQuestProgressAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -340,7 +420,8 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        await using var cmd = new SqliteCommand("DELETE FROM QuestProgress", connection);
+        await using var cmd = new SqliteCommand("DELETE FROM QuestProgress WHERE ProfileId = @profileId", connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -351,7 +432,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 목표 진행 상태 로드
     /// </summary>
-    public async Task<Dictionary<string, bool>> LoadObjectiveProgressAsync()
+    public async Task<Dictionary<string, bool>> LoadObjectiveProgressAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -361,8 +442,9 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "SELECT Id, IsCompleted FROM ObjectiveProgress";
+        var sql = "SELECT Id, IsCompleted FROM ObjectiveProgress WHERE ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -378,7 +460,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 목표 진행 상태 저장
     /// </summary>
-    public async Task SaveObjectiveProgressAsync(string id, string? questId, bool isCompleted)
+    public async Task SaveObjectiveProgressAsync(string id, string? questId, bool isCompleted, string profileId)
     {
         await InitializeAsync();
 
@@ -387,14 +469,15 @@ public sealed class UserDataDbService
         await connection.OpenAsync();
 
         var sql = @"
-            INSERT INTO ObjectiveProgress (Id, QuestId, IsCompleted, UpdatedAt)
-            VALUES (@id, @questId, @isCompleted, @updatedAt)
-            ON CONFLICT(Id) DO UPDATE SET
+            INSERT INTO ObjectiveProgress (ProfileId, Id, QuestId, IsCompleted, UpdatedAt)
+            VALUES (@profileId, @id, @questId, @isCompleted, @updatedAt)
+            ON CONFLICT(ProfileId, Id) DO UPDATE SET
                 QuestId = @questId,
                 IsCompleted = @isCompleted,
                 UpdatedAt = @updatedAt";
 
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@questId", questId ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@isCompleted", isCompleted ? 1 : 0);
@@ -406,7 +489,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 목표 진행 상태 삭제
     /// </summary>
-    public async Task DeleteObjectiveProgressAsync(string id)
+    public async Task DeleteObjectiveProgressAsync(string id, string profileId)
     {
         await InitializeAsync();
 
@@ -414,9 +497,10 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "DELETE FROM ObjectiveProgress WHERE Id = @id";
+        var sql = "DELETE FROM ObjectiveProgress WHERE Id = @id AND ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
 
         await cmd.ExecuteNonQueryAsync();
     }
@@ -424,7 +508,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 퀘스트의 모든 목표 진행 상태 삭제
     /// </summary>
-    public async Task DeleteObjectiveProgressByQuestAsync(string questId)
+    public async Task DeleteObjectiveProgressByQuestAsync(string questId, string profileId)
     {
         await InitializeAsync();
 
@@ -432,10 +516,11 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "DELETE FROM ObjectiveProgress WHERE QuestId = @questId OR Id LIKE @pattern";
+        var sql = "DELETE FROM ObjectiveProgress WHERE (QuestId = @questId OR Id LIKE @pattern) AND ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@questId", questId);
         cmd.Parameters.AddWithValue("@pattern", $"{questId}:%");
+        cmd.Parameters.AddWithValue("@profileId", profileId);
 
         await cmd.ExecuteNonQueryAsync();
     }
@@ -443,7 +528,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 목표 진행 상태 삭제
     /// </summary>
-    public async Task ClearAllObjectiveProgressAsync()
+    public async Task ClearAllObjectiveProgressAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -451,7 +536,8 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        await using var cmd = new SqliteCommand("DELETE FROM ObjectiveProgress", connection);
+        await using var cmd = new SqliteCommand("DELETE FROM ObjectiveProgress WHERE ProfileId = @profileId", connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -462,7 +548,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 하이드아웃 진행 상태 로드
     /// </summary>
-    public async Task<Dictionary<string, int>> LoadHideoutProgressAsync()
+    public async Task<Dictionary<string, int>> LoadHideoutProgressAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -472,8 +558,9 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "SELECT StationId, Level FROM HideoutProgress";
+        var sql = "SELECT StationId, Level FROM HideoutProgress WHERE ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -489,7 +576,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 하이드아웃 진행 상태 저장
     /// </summary>
-    public async Task SaveHideoutProgressAsync(string stationId, int level)
+    public async Task SaveHideoutProgressAsync(string stationId, int level, string profileId)
     {
         await InitializeAsync();
 
@@ -497,24 +584,25 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        // 레벨이 0이면 삭제
         if (level == 0)
         {
-            var deleteSql = "DELETE FROM HideoutProgress WHERE StationId = @stationId";
+            var deleteSql = "DELETE FROM HideoutProgress WHERE StationId = @stationId AND ProfileId = @profileId";
             await using var deleteCmd = new SqliteCommand(deleteSql, connection);
             deleteCmd.Parameters.AddWithValue("@stationId", stationId);
+            deleteCmd.Parameters.AddWithValue("@profileId", profileId);
             await deleteCmd.ExecuteNonQueryAsync();
             return;
         }
 
         var sql = @"
-            INSERT INTO HideoutProgress (StationId, Level, UpdatedAt)
-            VALUES (@stationId, @level, @updatedAt)
-            ON CONFLICT(StationId) DO UPDATE SET
+            INSERT INTO HideoutProgress (ProfileId, StationId, Level, UpdatedAt)
+            VALUES (@profileId, @stationId, @level, @updatedAt)
+            ON CONFLICT(ProfileId, StationId) DO UPDATE SET
                 Level = @level,
                 UpdatedAt = @updatedAt";
 
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         cmd.Parameters.AddWithValue("@stationId", stationId);
         cmd.Parameters.AddWithValue("@level", level);
         cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("o"));
@@ -525,7 +613,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 하이드아웃 진행 상태 삭제
     /// </summary>
-    public async Task ClearAllHideoutProgressAsync()
+    public async Task ClearAllHideoutProgressAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -533,7 +621,8 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        await using var cmd = new SqliteCommand("DELETE FROM HideoutProgress", connection);
+        await using var cmd = new SqliteCommand("DELETE FROM HideoutProgress WHERE ProfileId = @profileId", connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -544,7 +633,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 아이템 인벤토리 로드
     /// </summary>
-    public async Task<Dictionary<string, (int FirQuantity, int NonFirQuantity)>> LoadItemInventoryAsync()
+    public async Task<Dictionary<string, (int FirQuantity, int NonFirQuantity)>> LoadItemInventoryAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -554,8 +643,9 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        var sql = "SELECT ItemNormalizedName, FirQuantity, NonFirQuantity FROM ItemInventory";
+        var sql = "SELECT ItemNormalizedName, FirQuantity, NonFirQuantity FROM ItemInventory WHERE ProfileId = @profileId";
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -572,7 +662,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 아이템 인벤토리 저장
     /// </summary>
-    public async Task SaveItemInventoryAsync(string itemNormalizedName, int firQuantity, int nonFirQuantity)
+    public async Task SaveItemInventoryAsync(string itemNormalizedName, int firQuantity, int nonFirQuantity, string profileId)
     {
         await InitializeAsync();
 
@@ -580,25 +670,26 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        // 둘 다 0이면 삭제
         if (firQuantity == 0 && nonFirQuantity == 0)
         {
-            var deleteSql = "DELETE FROM ItemInventory WHERE ItemNormalizedName = @itemName";
+            var deleteSql = "DELETE FROM ItemInventory WHERE ItemNormalizedName = @itemName AND ProfileId = @profileId";
             await using var deleteCmd = new SqliteCommand(deleteSql, connection);
             deleteCmd.Parameters.AddWithValue("@itemName", itemNormalizedName);
+            deleteCmd.Parameters.AddWithValue("@profileId", profileId);
             await deleteCmd.ExecuteNonQueryAsync();
             return;
         }
 
         var sql = @"
-            INSERT INTO ItemInventory (ItemNormalizedName, FirQuantity, NonFirQuantity, UpdatedAt)
-            VALUES (@itemName, @firQty, @nonFirQty, @updatedAt)
-            ON CONFLICT(ItemNormalizedName) DO UPDATE SET
+            INSERT INTO ItemInventory (ProfileId, ItemNormalizedName, FirQuantity, NonFirQuantity, UpdatedAt)
+            VALUES (@profileId, @itemName, @firQty, @nonFirQty, @updatedAt)
+            ON CONFLICT(ProfileId, ItemNormalizedName) DO UPDATE SET
                 FirQuantity = @firQty,
                 NonFirQuantity = @nonFirQty,
                 UpdatedAt = @updatedAt";
 
         await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         cmd.Parameters.AddWithValue("@itemName", itemNormalizedName);
         cmd.Parameters.AddWithValue("@firQty", firQuantity);
         cmd.Parameters.AddWithValue("@nonFirQty", nonFirQuantity);
@@ -610,7 +701,7 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 아이템 인벤토리 삭제
     /// </summary>
-    public async Task ClearAllItemInventoryAsync()
+    public async Task ClearAllItemInventoryAsync(string profileId)
     {
         await InitializeAsync();
 
@@ -618,7 +709,8 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        await using var cmd = new SqliteCommand("DELETE FROM ItemInventory", connection);
+        await using var cmd = new SqliteCommand("DELETE FROM ItemInventory WHERE ProfileId = @profileId", connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -639,19 +731,15 @@ public sealed class UserDataDbService
         ReportProgress("데이터 마이그레이션을 시작합니다...");
         var migrated = false;
 
-        // Quest Progress 마이그레이션
         ReportProgress("퀘스트 진행 데이터 마이그레이션 중...");
         migrated |= await MigrateQuestProgressJsonAsync();
 
-        // Objective Progress 마이그레이션
         ReportProgress("목표 진행 데이터 마이그레이션 중...");
         migrated |= await MigrateObjectiveProgressJsonAsync();
 
-        // Hideout Progress 마이그레이션
         ReportProgress("하이드아웃 진행 데이터 마이그레이션 중...");
         migrated |= await MigrateHideoutProgressJsonAsync();
 
-        // Item Inventory 마이그레이션
         ReportProgress("아이템 인벤토리 데이터 마이그레이션 중...");
         migrated |= await MigrateItemInventoryJsonAsync();
 
@@ -665,7 +753,6 @@ public sealed class UserDataDbService
 
     private async Task<bool> MigrateQuestProgressJsonAsync()
     {
-        // V2 파일 먼저 확인
         var v2Path = Path.Combine(AppEnv.ConfigPath, "quest_progress_v2.json");
         var v1Path = Path.Combine(AppEnv.ConfigPath, "quest_progress.json");
 
@@ -683,30 +770,18 @@ public sealed class UserDataDbService
                     foreach (var entry in v2Data.CompletedQuests)
                     {
                         if (entry.IsValid)
-                        {
-                            await SaveQuestProgressAsync(
-                                entry.Id ?? entry.NormalizedName!,
-                                entry.NormalizedName,
-                                QuestStatus.Done);
-                        }
+                            await SaveQuestProgressAsync(entry.Id ?? entry.NormalizedName!, entry.NormalizedName, QuestStatus.Done, ProfileService.PvpProfileId);
                     }
 
                     foreach (var entry in v2Data.FailedQuests)
                     {
                         if (entry.IsValid)
-                        {
-                            await SaveQuestProgressAsync(
-                                entry.Id ?? entry.NormalizedName!,
-                                entry.NormalizedName,
-                                QuestStatus.Failed);
-                        }
+                            await SaveQuestProgressAsync(entry.Id ?? entry.NormalizedName!, entry.NormalizedName, QuestStatus.Failed, ProfileService.PvpProfileId);
                     }
 
-                    // 마이그레이션 완료 후 파일 삭제
                     File.Delete(v2Path);
                     System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {v2Path}");
 
-                    // V1 파일도 있으면 삭제
                     if (File.Exists(v1Path))
                     {
                         File.Delete(v1Path);
@@ -735,12 +810,9 @@ public sealed class UserDataDbService
                     foreach (var kvp in v1Data)
                     {
                         if (Enum.TryParse<QuestStatus>(kvp.Value, out var status))
-                        {
-                            await SaveQuestProgressAsync(kvp.Key, kvp.Key, status);
-                        }
+                            await SaveQuestProgressAsync(kvp.Key, kvp.Key, status, ProfileService.PvpProfileId);
                     }
 
-                    // 마이그레이션 완료 후 파일 삭제
                     File.Delete(v1Path);
                     System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {v1Path}");
 
@@ -774,21 +846,17 @@ public sealed class UserDataDbService
 
                 foreach (var kvp in data)
                 {
-                    // 키 형식: "questName:index" 또는 "id:objectiveId"
                     string? questId = null;
                     if (kvp.Key.Contains(':'))
                     {
                         var parts = kvp.Key.Split(':');
                         if (parts[0] != "id")
-                        {
                             questId = parts[0];
-                        }
                     }
 
-                    await SaveObjectiveProgressAsync(kvp.Key, questId, kvp.Value);
+                    await SaveObjectiveProgressAsync(kvp.Key, questId, kvp.Value, ProfileService.PvpProfileId);
                 }
 
-                // 마이그레이션 완료 후 파일 삭제
                 File.Delete(filePath);
                 System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {filePath}");
 
@@ -815,7 +883,6 @@ public sealed class UserDataDbService
             var json = await File.ReadAllTextAsync(filePath);
             Dictionary<string, int>? modules = null;
 
-            // Try new format first: {"version": 1, "lastUpdated": "...", "modules": {...}}
             try
             {
                 using var doc = JsonDocument.Parse(json);
@@ -825,15 +892,12 @@ public sealed class UserDataDbService
                     foreach (var prop in modulesElement.EnumerateObject())
                     {
                         if (prop.Value.TryGetInt32(out var level))
-                        {
                             modules[prop.Name] = level;
-                        }
                     }
                 }
             }
             catch
             {
-                // Fall back to old format: {"stationId": level, ...}
                 modules = JsonSerializer.Deserialize<Dictionary<string, int>>(json);
             }
 
@@ -842,11 +906,8 @@ public sealed class UserDataDbService
                 await InitializeAsync();
 
                 foreach (var kvp in modules)
-                {
-                    await SaveHideoutProgressAsync(kvp.Key, kvp.Value);
-                }
+                    await SaveHideoutProgressAsync(kvp.Key, kvp.Value, ProfileService.PvpProfileId);
 
-                // 마이그레이션 완료 후 파일 삭제
                 File.Delete(filePath);
                 System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {filePath}");
 
@@ -871,11 +932,7 @@ public sealed class UserDataDbService
         try
         {
             var json = await File.ReadAllTextAsync(filePath);
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
-
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
             var data = JsonSerializer.Deserialize<ItemInventoryData>(json, options);
 
             if (data != null && data.Items.Count > 0)
@@ -885,13 +942,9 @@ public sealed class UserDataDbService
                 foreach (var kvp in data.Items)
                 {
                     var inventory = kvp.Value;
-                    await SaveItemInventoryAsync(
-                        kvp.Key,
-                        inventory.FirQuantity,
-                        inventory.NonFirQuantity);
+                    await SaveItemInventoryAsync(kvp.Key, inventory.FirQuantity, inventory.NonFirQuantity, ProfileService.PvpProfileId);
                 }
 
-                // 마이그레이션 완료 후 파일 삭제
                 File.Delete(filePath);
                 System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {filePath}");
 
@@ -989,9 +1042,7 @@ public sealed class UserDataDbService
 
         while (await reader.ReadAsync())
         {
-            var key = reader.GetString(0);
-            var value = reader.GetString(1);
-            result[key] = value;
+            result[reader.GetString(0)] = reader.GetString(1);
         }
 
         return result;
@@ -1003,9 +1054,7 @@ public sealed class UserDataDbService
     public string? GetSetting(string key)
     {
         if (!_isInitialized)
-        {
             InitializeAsync().GetAwaiter().GetResult();
-        }
 
         var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
         using var connection = new SqliteConnection(connectionString);
@@ -1015,8 +1064,7 @@ public sealed class UserDataDbService
         using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@key", key);
 
-        var result = cmd.ExecuteScalar();
-        return result as string;
+        return cmd.ExecuteScalar() as string;
     }
 
     /// <summary>
@@ -1025,9 +1073,7 @@ public sealed class UserDataDbService
     public void SetSetting(string key, string value)
     {
         if (!_isInitialized)
-        {
             InitializeAsync().GetAwaiter().GetResult();
-        }
 
         var connectionString = $"Data Source={_databasePath}";
         using var connection = new SqliteConnection(connectionString);
@@ -1047,12 +1093,149 @@ public sealed class UserDataDbService
 
     #endregion
 
+    #region Profile Settings
+
+    /// <summary>
+    /// 프로필별 설정 값 조회 (비동기)
+    /// </summary>
+    public async Task<string?> GetProfileSettingAsync(string profileId, string key)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = "SELECT Value FROM ProfileSettings WHERE ProfileId = @profileId AND Key = @key";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
+        cmd.Parameters.AddWithValue("@key", key);
+
+        return await cmd.ExecuteScalarAsync() as string;
+    }
+
+    /// <summary>
+    /// 프로필별 설정 값 저장 (비동기)
+    /// </summary>
+    public async Task SetProfileSettingAsync(string profileId, string key, string value)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            INSERT INTO ProfileSettings (ProfileId, Key, Value)
+            VALUES (@profileId, @key, @value)
+            ON CONFLICT(ProfileId, Key) DO UPDATE SET Value = @value";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
+        cmd.Parameters.AddWithValue("@key", key);
+        cmd.Parameters.AddWithValue("@value", value);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// 프로필별 모든 설정 로드
+    /// </summary>
+    public async Task<Dictionary<string, string>> LoadProfileSettingsAsync(string profileId)
+    {
+        await InitializeAsync();
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = "SELECT Key, Value FROM ProfileSettings WHERE ProfileId = @profileId";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            result[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 프로필별 설정 값 삭제
+    /// </summary>
+    public async Task DeleteProfileSettingAsync(string profileId, string key)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = "DELETE FROM ProfileSettings WHERE ProfileId = @profileId AND Key = @key";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
+        cmd.Parameters.AddWithValue("@key", key);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// 동기 버전: 프로필별 설정 값 조회 (초기화 시 사용)
+    /// </summary>
+    public string? GetProfileSetting(string profileId, string key)
+    {
+        if (!_isInitialized)
+            InitializeAsync().GetAwaiter().GetResult();
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        var sql = "SELECT Value FROM ProfileSettings WHERE ProfileId = @profileId AND Key = @key";
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
+        cmd.Parameters.AddWithValue("@key", key);
+
+        return cmd.ExecuteScalar() as string;
+    }
+
+    /// <summary>
+    /// 동기 버전: 프로필별 설정 값 저장 (초기화 시 사용)
+    /// </summary>
+    public void SetProfileSetting(string profileId, string key, string value)
+    {
+        if (!_isInitialized)
+            InitializeAsync().GetAwaiter().GetResult();
+
+        var connectionString = $"Data Source={_databasePath}";
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        var sql = @"
+            INSERT INTO ProfileSettings (ProfileId, Key, Value)
+            VALUES (@profileId, @key, @value)
+            ON CONFLICT(ProfileId, Key) DO UPDATE SET Value = @value";
+
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileId", profileId);
+        cmd.Parameters.AddWithValue("@key", key);
+        cmd.Parameters.AddWithValue("@value", value);
+
+        cmd.ExecuteNonQuery();
+    }
+
+    #endregion
+
     #region Batch Operations
 
     /// <summary>
     /// 여러 퀘스트 진행 상태를 일괄 저장
     /// </summary>
-    public async Task SaveQuestProgressBatchAsync(Dictionary<string, QuestStatus> progress,
+    public async Task SaveQuestProgressBatchAsync(Dictionary<string, QuestStatus> progress, string profileId,
         Func<string, string?>? getNormalizedName = null)
     {
         await InitializeAsync();
@@ -1066,9 +1249,9 @@ public sealed class UserDataDbService
         try
         {
             var sql = @"
-                INSERT INTO QuestProgress (Id, NormalizedName, Status, UpdatedAt)
-                VALUES (@id, @normalizedName, @status, @updatedAt)
-                ON CONFLICT(Id) DO UPDATE SET
+                INSERT INTO QuestProgress (ProfileId, Id, NormalizedName, Status, UpdatedAt)
+                VALUES (@profileId, @id, @normalizedName, @status, @updatedAt)
+                ON CONFLICT(ProfileId, Id) DO UPDATE SET
                     NormalizedName = @normalizedName,
                     Status = @status,
                     UpdatedAt = @updatedAt";
@@ -1078,6 +1261,7 @@ public sealed class UserDataDbService
                 await using var cmd = new SqliteCommand(sql, connection, (SqliteTransaction)transaction);
                 var normalizedName = getNormalizedName?.Invoke(kvp.Key) ?? kvp.Key;
 
+                cmd.Parameters.AddWithValue("@profileId", profileId);
                 cmd.Parameters.AddWithValue("@id", kvp.Key);
                 cmd.Parameters.AddWithValue("@normalizedName", normalizedName);
                 cmd.Parameters.AddWithValue("@status", kvp.Value.ToString());
