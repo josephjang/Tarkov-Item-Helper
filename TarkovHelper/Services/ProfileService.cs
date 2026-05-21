@@ -30,8 +30,17 @@ public sealed class ProfileService
     public async Task InitializeAsync()
     {
         var saved = await UserDataDbService.Instance.GetSettingAsync(SettingKey);
-        _activeGameMode = saved == "PVE" ? GameMode.PVE : GameMode.PVP;
-        _log.Info($"Initialized: {_activeGameMode}");
+        var mode = saved == "PVE" ? GameMode.PVE : GameMode.PVP;
+        _log.Info($"Initialized: {mode}");
+
+        // SettingsService and other singletons may already be constructed (default PVP)
+        // before InitializeAsync runs. If the saved mode differs, fire the event so they
+        // reload their profile-scoped state.
+        if (mode != _activeGameMode)
+        {
+            _activeGameMode = mode;
+            ActiveProfileChanged?.Invoke(this, new ProfileChangedEventArgs(mode, false));
+        }
     }
 
     public void SetActiveGameMode(GameMode mode, bool isAuto = false)

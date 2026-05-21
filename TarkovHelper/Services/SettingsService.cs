@@ -40,6 +40,17 @@ public class SettingsService
     private const string KeyHasUnheardEdition = "app.hasUnheardEdition";
     private const string KeyPrestigeLevel = "app.prestigeLevel";
 
+    // One-time flag: legacy profile-specific settings copied from UserSettings to ProfileSettings('pvp')
+    private const string KeyProfileSettingsMigrated = "app.profileSettingsMigrated";
+
+    // Profile-specific keys: stored per game mode in the ProfileSettings table.
+    // All other keys remain global in the UserSettings table.
+    private static readonly string[] ProfileSpecificKeys =
+    {
+        KeyPlayerLevel, KeyScavRep, KeyShowLevelLockedQuests, KeyDspDecodeCount,
+        KeyPlayerFaction, KeyHasEodEdition, KeyHasUnheardEdition, KeyPrestigeLevel
+    };
+
     // Map settings keys moved to MapSettings service
 
     private bool _settingsLoaded;
@@ -75,6 +86,24 @@ public class SettingsService
     private SettingsService()
     {
         LoadSettings();
+        ProfileService.Instance.ActiveProfileChanged += OnActiveProfileChanged;
+    }
+
+    /// <summary>
+    /// When the active game mode changes, reload profile-specific settings and
+    /// notify subscribers so the UI reflects the new profile's values.
+    /// </summary>
+    private void OnActiveProfileChanged(object? sender, ProfileChangedEventArgs e)
+    {
+        LoadProfileSettings();
+
+        PlayerLevelChanged?.Invoke(this, PlayerLevel);
+        ScavRepChanged?.Invoke(this, ScavRep);
+        DspDecodeCountChanged?.Invoke(this, DspDecodeCount);
+        PlayerFactionChanged?.Invoke(this, PlayerFaction);
+        HasEodEditionChanged?.Invoke(this, HasEodEdition);
+        HasUnheardEditionChanged?.Invoke(this, HasUnheardEdition);
+        PrestigeLevelChanged?.Invoke(this, PrestigeLevel);
     }
 
     /// <summary>
@@ -129,7 +158,7 @@ public class SettingsService
             if (_playerLevel != clampedValue)
             {
                 _playerLevel = clampedValue;
-                SaveSetting(KeyPlayerLevel, clampedValue.ToString());
+                SaveProfileSetting(KeyPlayerLevel, clampedValue.ToString());
                 PlayerLevelChanged?.Invoke(this, clampedValue);
             }
         }
@@ -148,7 +177,7 @@ public class SettingsService
         set
         {
             _showLevelLockedQuests = value;
-            SaveSetting(KeyShowLevelLockedQuests, value.ToString());
+            SaveProfileSetting(KeyShowLevelLockedQuests, value.ToString());
         }
     }
 
@@ -168,7 +197,7 @@ public class SettingsService
             if (Math.Abs((_scavRep ?? DefaultScavRep) - clampedValue) > 0.01)
             {
                 _scavRep = clampedValue;
-                SaveSetting(KeyScavRep, clampedValue.ToString());
+                SaveProfileSetting(KeyScavRep, clampedValue.ToString());
                 ScavRepChanged?.Invoke(this, clampedValue);
             }
         }
@@ -315,7 +344,7 @@ public class SettingsService
             if (_dspDecodeCount != clampedValue)
             {
                 _dspDecodeCount = clampedValue;
-                SaveSetting(KeyDspDecodeCount, clampedValue.ToString());
+                SaveProfileSetting(KeyDspDecodeCount, clampedValue.ToString());
                 DspDecodeCountChanged?.Invoke(this, clampedValue);
             }
         }
@@ -337,7 +366,7 @@ public class SettingsService
             if (_playerFaction != normalizedValue)
             {
                 _playerFaction = normalizedValue;
-                SaveSetting(KeyPlayerFaction, normalizedValue ?? "");
+                SaveProfileSetting(KeyPlayerFaction, normalizedValue ?? "");
                 PlayerFactionChanged?.Invoke(this, normalizedValue);
             }
         }
@@ -373,7 +402,7 @@ public class SettingsService
             if (_hasEodEdition != value)
             {
                 _hasEodEdition = value;
-                SaveSetting(KeyHasEodEdition, value.ToString());
+                SaveProfileSetting(KeyHasEodEdition, value.ToString());
                 HasEodEditionChanged?.Invoke(this, value);
             }
         }
@@ -394,7 +423,7 @@ public class SettingsService
             if (_hasUnheardEdition != value)
             {
                 _hasUnheardEdition = value;
-                SaveSetting(KeyHasUnheardEdition, value.ToString());
+                SaveProfileSetting(KeyHasUnheardEdition, value.ToString());
                 HasUnheardEditionChanged?.Invoke(this, value);
             }
         }
@@ -416,7 +445,7 @@ public class SettingsService
             if (_prestigeLevel != clampedValue)
             {
                 _prestigeLevel = clampedValue;
-                SaveSetting(KeyPrestigeLevel, clampedValue.ToString());
+                SaveProfileSetting(KeyPrestigeLevel, clampedValue.ToString());
                 PrestigeLevelChanged?.Invoke(this, clampedValue);
             }
         }
@@ -720,6 +749,36 @@ public class SettingsService
     }
 
     /// <summary>
+    /// Save a profile-specific setting scoped to the active game mode.
+    /// </summary>
+    private void SaveProfileSetting(string key, string value)
+    {
+        try
+        {
+            _userDataDb.SetProfileSetting(ProfileService.Instance.ActiveProfileId, key, value);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"SaveProfileSetting failed: key={key}, error={ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Read a profile-specific setting scoped to the active game mode.
+    /// </summary>
+    private string? GetProfileSetting(string key)
+    {
+        try
+        {
+            return _userDataDb.GetProfileSetting(ProfileService.Instance.ActiveProfileId, key);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Generic getter for any setting key
     /// </summary>
     public string GetValue(string key, string defaultValue = "")
@@ -752,21 +811,15 @@ public class SettingsService
             // First check if JSON migration is needed
             MigrateFromJsonIfNeeded();
 
-            // Load from DB
+            // One-time: move legacy profile-specific values from UserSettings to ProfileSettings('pvp')
+            MigrateGlobalSettingsToProfileIfNeeded();
+
+            // Load global settings from UserSettings
             _logFolderPath = _userDataDb.GetSetting(KeyLogFolderPath);
             if (string.IsNullOrEmpty(_logFolderPath)) _logFolderPath = null;
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyLogMonitoringEnabled), out var logMonitoring))
                 _logMonitoringEnabled = logMonitoring;
-
-            if (int.TryParse(_userDataDb.GetSetting(KeyPlayerLevel), out var level))
-                _playerLevel = level;
-
-            if (double.TryParse(_userDataDb.GetSetting(KeyScavRep), out var scavRep))
-                _scavRep = scavRep;
-
-            if (bool.TryParse(_userDataDb.GetSetting(KeyShowLevelLockedQuests), out var showLocked))
-                _showLevelLockedQuests = showLocked;
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyHideWipeWarning), out var hideWarning))
                 _hideWipeWarning = hideWarning;
@@ -777,26 +830,62 @@ public class SettingsService
             if (double.TryParse(_userDataDb.GetSetting(KeyBaseFontSize), out var fontSize))
                 _baseFontSize = fontSize;
 
-            if (int.TryParse(_userDataDb.GetSetting(KeyDspDecodeCount), out var dspCount))
-                _dspDecodeCount = dspCount;
-
-            _playerFaction = _userDataDb.GetSetting(KeyPlayerFaction);
-            if (string.IsNullOrEmpty(_playerFaction)) _playerFaction = null;
-
-            if (bool.TryParse(_userDataDb.GetSetting(KeyHasEodEdition), out var hasEod))
-                _hasEodEdition = hasEod;
-
-            if (bool.TryParse(_userDataDb.GetSetting(KeyHasUnheardEdition), out var hasUnheard))
-                _hasUnheardEdition = hasUnheard;
-
-            if (int.TryParse(_userDataDb.GetSetting(KeyPrestigeLevel), out var prestige))
-                _prestigeLevel = prestige;
+            // Load profile-specific settings from ProfileSettings (active game mode)
+            LoadProfileSettings();
 
             // Map settings are now loaded by MapSettings service
         }
         catch (Exception ex)
         {
             _log.Error($"Load failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Load profile-specific settings for the active game mode from the ProfileSettings table.
+    /// Values absent for the active profile reset to null so the property defaults apply.
+    /// </summary>
+    private void LoadProfileSettings()
+    {
+        _playerLevel = int.TryParse(GetProfileSetting(KeyPlayerLevel), out var level) ? level : null;
+        _scavRep = double.TryParse(GetProfileSetting(KeyScavRep), out var scavRep) ? scavRep : null;
+        _showLevelLockedQuests = bool.TryParse(GetProfileSetting(KeyShowLevelLockedQuests), out var showLocked) ? showLocked : null;
+        _dspDecodeCount = int.TryParse(GetProfileSetting(KeyDspDecodeCount), out var dspCount) ? dspCount : null;
+
+        var faction = GetProfileSetting(KeyPlayerFaction);
+        _playerFaction = string.IsNullOrEmpty(faction) ? null : faction;
+
+        _hasEodEdition = bool.TryParse(GetProfileSetting(KeyHasEodEdition), out var hasEod) ? hasEod : null;
+        _hasUnheardEdition = bool.TryParse(GetProfileSetting(KeyHasUnheardEdition), out var hasUnheard) ? hasUnheard : null;
+        _prestigeLevel = int.TryParse(GetProfileSetting(KeyPrestigeLevel), out var prestige) ? prestige : null;
+    }
+
+    /// <summary>
+    /// One-time migration: copy legacy profile-specific values stored globally in UserSettings
+    /// into ProfileSettings under the PvP profile (existing data belongs to PvP).
+    /// </summary>
+    private void MigrateGlobalSettingsToProfileIfNeeded()
+    {
+        if (_userDataDb.GetSetting(KeyProfileSettingsMigrated) == "true")
+            return;
+
+        try
+        {
+            foreach (var key in ProfileSpecificKeys)
+            {
+                var globalValue = _userDataDb.GetSetting(key);
+                if (!string.IsNullOrEmpty(globalValue))
+                {
+                    _userDataDb.SetProfileSetting(ProfileService.PvpProfileId, key, globalValue);
+                }
+            }
+
+            _userDataDb.SetSetting(KeyProfileSettingsMigrated, "true");
+            _log.Info("Migrated profile-specific settings to PvP profile");
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Profile settings migration failed: {ex.Message}");
         }
     }
 
@@ -816,17 +905,9 @@ public class SettingsService
 
             if (settings != null)
             {
+                // Global settings → UserSettings
                 if (!string.IsNullOrEmpty(settings.LogFolderPath))
                     _userDataDb.SetSetting(KeyLogFolderPath, settings.LogFolderPath);
-
-                if (settings.PlayerLevel.HasValue)
-                    _userDataDb.SetSetting(KeyPlayerLevel, settings.PlayerLevel.Value.ToString());
-
-                if (settings.ScavRep.HasValue)
-                    _userDataDb.SetSetting(KeyScavRep, settings.ScavRep.Value.ToString());
-
-                if (settings.ShowLevelLockedQuests.HasValue)
-                    _userDataDb.SetSetting(KeyShowLevelLockedQuests, settings.ShowLevelLockedQuests.Value.ToString());
 
                 if (settings.HideWipeWarning.HasValue)
                     _userDataDb.SetSetting(KeyHideWipeWarning, settings.HideWipeWarning.Value.ToString());
@@ -837,11 +918,21 @@ public class SettingsService
                 if (settings.BaseFontSize.HasValue)
                     _userDataDb.SetSetting(KeyBaseFontSize, settings.BaseFontSize.Value.ToString());
 
+                // Profile-specific settings → ProfileSettings (legacy data belongs to PvP)
+                if (settings.PlayerLevel.HasValue)
+                    _userDataDb.SetProfileSetting(ProfileService.PvpProfileId, KeyPlayerLevel, settings.PlayerLevel.Value.ToString());
+
+                if (settings.ScavRep.HasValue)
+                    _userDataDb.SetProfileSetting(ProfileService.PvpProfileId, KeyScavRep, settings.ScavRep.Value.ToString());
+
+                if (settings.ShowLevelLockedQuests.HasValue)
+                    _userDataDb.SetProfileSetting(ProfileService.PvpProfileId, KeyShowLevelLockedQuests, settings.ShowLevelLockedQuests.Value.ToString());
+
                 if (settings.DspDecodeCount.HasValue)
-                    _userDataDb.SetSetting(KeyDspDecodeCount, settings.DspDecodeCount.Value.ToString());
+                    _userDataDb.SetProfileSetting(ProfileService.PvpProfileId, KeyDspDecodeCount, settings.DspDecodeCount.Value.ToString());
 
                 if (!string.IsNullOrEmpty(settings.PlayerFaction))
-                    _userDataDb.SetSetting(KeyPlayerFaction, settings.PlayerFaction);
+                    _userDataDb.SetProfileSetting(ProfileService.PvpProfileId, KeyPlayerFaction, settings.PlayerFaction);
             }
 
             // Delete the JSON file after migration

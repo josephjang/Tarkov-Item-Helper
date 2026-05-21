@@ -15,6 +15,11 @@ namespace TarkovHelper.Services
 
         private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
 
+        private HideoutProgressService()
+        {
+            ProfileService.Instance.ActiveProfileChanged += (_, _) => _ = ReloadForProfileAsync();
+        }
+
         // Currency items should count by reference count, not total amount
         private static readonly HashSet<string> CurrencyItems = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -337,6 +342,16 @@ namespace TarkovHelper.Services
             {
                 await LoadProgressFromDbAsync();
             }).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Reload hideout progress for the active game mode and notify the UI.
+        /// Called when the user switches profiles.
+        /// </summary>
+        public async Task ReloadForProfileAsync()
+        {
+            await LoadProgressFromDbAsync();
+            ProgressChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private async Task LoadProgressFromDbAsync()
