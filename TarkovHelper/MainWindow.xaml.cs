@@ -201,6 +201,11 @@ public partial class MainWindow : Window
             _logSyncService.StartMonitoring(logPath);
             _logSyncService.QuestEventDetected -= OnQuestEventDetected;
             _logSyncService.QuestEventDetected += OnQuestEventDetected;
+
+            // App-wide raid/session monitoring so PvP/PvE auto-detect works on every tab,
+            // not only while the Map page is open. ProfileService consumes SessionModeDetected.
+            EftRaidEventService.Instance.StartMonitoring(logPath);
+
             _log.Info($"Auto-started log monitoring: {logPath}");
         }
 

@@ -743,11 +743,11 @@ public partial class MapPage : UserControl
     /// </summary>
     private void StopRaidEventMonitoring()
     {
-        // 이벤트 구독 해제
+        // 이벤트 구독 해제 (페이지 전용 핸들러만)
         _raidEventService.RaidEvent -= OnRaidEvent;
 
-        // 모니터링 중지
-        _raidEventService.StopMonitoring();
+        // 모니터링은 앱 전역에서 관리하므로 여기서 중지하지 않는다.
+        // (PvP/PvE 자동 감지가 다른 탭에서도 동작해야 함)
     }
 
     /// <summary>

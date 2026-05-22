@@ -101,7 +101,7 @@ _log.Warning("message");
 _log.Error("message", exception);
 ```
 
-Logs written to `%LocalAppData%/TarkovHelper/Logs/`.
+Logs written to `{AppDir}/Logs/<date>-<n>/` (next to the executable, e.g. `bin/Debug/net8.0-windows/Logs/` when running a Debug build), not `%LocalAppData%`.
 
 ### Data Paths
 
