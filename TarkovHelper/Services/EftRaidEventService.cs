@@ -172,6 +172,12 @@ public sealed class EftRaidEventService : IDisposable
     private DateTime _lastApplicationEventTime = DateTime.MinValue;
     private DateTime _lastNetworkEventTime = DateTime.MinValue;
 
+    // Polling fallback: FileSystemWatcher misses writes when EFT keeps the log open
+    // and the on-disk size/timestamp metadata isn't refreshed until a flush.
+    private readonly object _readLock = new();
+    private System.Timers.Timer? _pollTimer;
+    private string? _monitoredFolderPath;
+
     // 현재 상태
     private EftProfileInfo? _currentProfile;
     private EftRaidInfo? _currentRaid;
@@ -280,12 +286,16 @@ public sealed class EftRaidEventService : IDisposable
 
                 _isWatching = true;
                 _filePositions.Clear();
+                _monitoredFolderPath = folderPath;
 
                 // 기존 프로파일 정보 로드
                 Task.Run(LoadProfileFromDbAsync);
 
                 // 초기 스캔 - 최신 로그에서 프로파일과 세션 정보 찾기
                 InitialScan(folderPath);
+
+                // 폴링 폴백 시작 (FileSystemWatcher가 놓치는 쓰기를 보완)
+                StartPollTimer();
 
                 MonitoringStateChanged?.Invoke(this, true);
                 _log.Info($"EftRaidEventService started monitoring: {folderPath}");
@@ -309,6 +319,11 @@ public sealed class EftRaidEventService : IDisposable
     {
         lock (_watcherLock)
         {
+            _pollTimer?.Stop();
+            _pollTimer?.Dispose();
+            _pollTimer = null;
+            _monitoredFolderPath = null;
+
             if (_applicationLogWatcher != null)
             {
                 _applicationLogWatcher.EnableRaisingEvents = false;
@@ -484,6 +499,15 @@ public sealed class EftRaidEventService : IDisposable
             {
                 _currentGameMode = lastGameMode;
                 _log.Debug($"[Scan] GameMode set: {_currentGameMode}");
+
+                // Propagate the detected mode so the active profile auto-switches at startup,
+                // not only on a live session line appended while monitoring.
+                RaidEvent?.Invoke(this, new EftRaidEventArgs
+                {
+                    EventType = EftRaidEventType.SessionModeDetected,
+                    Timestamp = DateTime.Now,
+                    Message = $"Game mode: {_currentGameMode} (startup scan)"
+                });
             }
             _log.Debug("ScanLogFileForProfile completed");
         }
@@ -519,77 +543,112 @@ public sealed class EftRaidEventService : IDisposable
         Task.Run(() => ProcessNetworkLogChanges(e.FullPath));
     }
 
-    private void ProcessApplicationLogChanges(string filePath)
+    private void StartPollTimer()
     {
+        _pollTimer = new System.Timers.Timer(1000) { AutoReset = true };
+        _pollTimer.Elapsed += (_, _) => PollLatestLogs();
+        _pollTimer.Start();
+    }
+
+    /// <summary>
+    /// Polling fallback. FileSystemWatcher does not fire reliably while EFT keeps the
+    /// log file open (the on-disk size/timestamp isn't refreshed until a flush), so we
+    /// periodically re-read the latest logs from the last position regardless of metadata.
+    /// </summary>
+    private void PollLatestLogs()
+    {
+        var folderPath = _monitoredFolderPath;
+        if (string.IsNullOrEmpty(folderPath)) return;
+
         try
         {
-            var fileInfo = new FileInfo(filePath);
-            if (!fileInfo.Exists) return;
+            var latestFolder = FindLatestLogSubfolder(folderPath);
+            if (latestFolder == null) return;
 
-            var lastPosition = _filePositions.GetValueOrDefault(filePath, 0);
-            if (fileInfo.Length < lastPosition) lastPosition = 0;
-            if (fileInfo.Length <= lastPosition)
-            {
-                _log.Debug($"[Process] No new content in: {Path.GetFileName(filePath)}");
-                return;
-            }
+            var appLog = Directory.GetFiles(latestFolder, "*application*.log", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(File.GetLastWriteTime)
+                .FirstOrDefault();
+            if (appLog != null) ProcessApplicationLogChanges(appLog);
 
-            var bytesToRead = fileInfo.Length - lastPosition;
-            _log.Debug($"[Process] Reading application log: {Path.GetFileName(filePath)}, bytes={bytesToRead}");
-
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            stream.Seek(lastPosition, SeekOrigin.Begin);
-
-            using var reader = new StreamReader(stream);
-            string? line;
-            int lineCount = 0;
-            while ((line = reader.ReadLine()) != null)
-            {
-                lineCount++;
-                ParseApplicationLogLine(line);
-            }
-
-            _filePositions[filePath] = stream.Position;
-            _log.Debug($"[Process] Processed {lineCount} lines from application log");
+            var netLog = Directory.GetFiles(latestFolder, "*network-connection*.log", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(File.GetLastWriteTime)
+                .FirstOrDefault();
+            if (netLog != null) ProcessNetworkLogChanges(netLog);
         }
         catch (Exception ex)
         {
-            _log.Warning($"Failed to process application log: {ex.Message}");
+            _log.Debug($"[Poll] failed: {ex.Message}");
+        }
+    }
+
+    private void ProcessApplicationLogChanges(string filePath)
+    {
+        lock (_readLock)
+        {
+            try
+            {
+                if (!File.Exists(filePath)) return;
+
+                // Use the open handle's length, not FileInfo, so flushed-but-uncached writes are seen.
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+                var lastPosition = _filePositions.GetValueOrDefault(filePath, 0);
+                if (stream.Length < lastPosition) lastPosition = 0;
+                if (stream.Length <= lastPosition) return;
+
+                stream.Seek(lastPosition, SeekOrigin.Begin);
+
+                using var reader = new StreamReader(stream);
+                string? line;
+                int lineCount = 0;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lineCount++;
+                    ParseApplicationLogLine(line);
+                }
+
+                _filePositions[filePath] = stream.Position;
+                _log.Debug($"[Process] Processed {lineCount} lines from application log");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Failed to process application log: {ex.Message}");
+            }
         }
     }
 
     private void ProcessNetworkLogChanges(string filePath)
     {
-        try
+        lock (_readLock)
         {
-            var fileInfo = new FileInfo(filePath);
-            if (!fileInfo.Exists) return;
-
-            var lastPosition = _filePositions.GetValueOrDefault(filePath, 0);
-            if (fileInfo.Length < lastPosition) lastPosition = 0;
-            if (fileInfo.Length <= lastPosition) return;
-
-            var bytesToRead = fileInfo.Length - lastPosition;
-            _log.Debug($"[Process] Reading network log: {Path.GetFileName(filePath)}, bytes={bytesToRead}");
-
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            stream.Seek(lastPosition, SeekOrigin.Begin);
-
-            using var reader = new StreamReader(stream);
-            string? line;
-            int lineCount = 0;
-            while ((line = reader.ReadLine()) != null)
+            try
             {
-                lineCount++;
-                ParseNetworkLogLine(line);
-            }
+                if (!File.Exists(filePath)) return;
 
-            _filePositions[filePath] = stream.Position;
-            _log.Debug($"[Process] Processed {lineCount} lines from network log");
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Failed to process network log: {ex.Message}");
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+                var lastPosition = _filePositions.GetValueOrDefault(filePath, 0);
+                if (stream.Length < lastPosition) lastPosition = 0;
+                if (stream.Length <= lastPosition) return;
+
+                stream.Seek(lastPosition, SeekOrigin.Begin);
+
+                using var reader = new StreamReader(stream);
+                string? line;
+                int lineCount = 0;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lineCount++;
+                    ParseNetworkLogLine(line);
+                }
+
+                _filePositions[filePath] = stream.Position;
+                _log.Debug($"[Process] Processed {lineCount} lines from network log");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Failed to process network log: {ex.Message}");
+            }
         }
     }
 
