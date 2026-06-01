@@ -179,6 +179,11 @@ public sealed class EftRaidEventService : IDisposable
     private System.Timers.Timer? _pollTimer;
     private string? _monitoredFolderPath;
 
+    // 폴더 캐시: 베이스 Logs 폴더의 mtime(하위 폴더 생성/삭제 시 갱신)을 키로,
+    // 새 세션 폴더가 생길 때만 재탐색하고 그 외에는 캐시를 재사용한다.
+    private volatile string? _cachedLogFolder;
+    private DateTime _baseFolderMtimeAtResolve = DateTime.MinValue;
+
     // 현재 상태
     private EftProfileInfo? _currentProfile;
     private EftRaidInfo? _currentRaid;
@@ -287,6 +292,8 @@ public sealed class EftRaidEventService : IDisposable
 
                 _isWatching = true;
                 _filePositions.Clear();
+                _cachedLogFolder = null;
+                _baseFolderMtimeAtResolve = DateTime.MinValue;
                 _monitoredFolderPath = folderPath;
 
                 // 기존 프로파일 정보 로드
@@ -344,6 +351,8 @@ public sealed class EftRaidEventService : IDisposable
             }
 
             _filePositions.Clear();
+            _cachedLogFolder = null;
+            _baseFolderMtimeAtResolve = DateTime.MinValue;
             _isWatching = false;
             MonitoringStateChanged?.Invoke(this, false);
         }
@@ -417,6 +426,30 @@ public sealed class EftRaidEventService : IDisposable
         {
             _log.Warning($"Initial scan failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 최신 로그 서브폴더를 캐싱해서 반환. 베이스 폴더 mtime이 그대로이고(=새 세션 폴더 없음)
+    /// 캐시 폴더가 살아있으면 비싼 디렉터리 스캔을 건너뛴다.
+    /// </summary>
+    private string? GetLatestLogSubfolderCached(string basePath)
+    {
+        DateTime baseMtime;
+        try { baseMtime = Directory.GetLastWriteTimeUtc(basePath); }
+        catch { baseMtime = DateTime.MinValue; }
+
+        var cached = _cachedLogFolder;
+        if (cached != null && baseMtime == _baseFolderMtimeAtResolve && Directory.Exists(cached))
+            return cached;
+
+        // 재탐색은 캐시가 비었거나, base 폴더 mtime이 바뀌었거나(=새 세션 폴더), 캐시 폴더가
+        // 사라졌을 때만 일어난다. 정상상태(같은 세션)에서는 이 로그가 뜨지 않아야 정상.
+        var resolved = FindLatestLogSubfolder(basePath);
+        _log.Debug($"[FolderCache] Re-resolved log folder: '{resolved}' " +
+                   $"(prevCached='{cached ?? "none"}', baseMtime {_baseFolderMtimeAtResolve:HH:mm:ss.fff} -> {baseMtime:HH:mm:ss.fff})");
+        _cachedLogFolder = resolved;
+        _baseFolderMtimeAtResolve = baseMtime;
+        return resolved;
     }
 
     private string? FindLatestLogSubfolder(string basePath)
@@ -563,7 +596,7 @@ public sealed class EftRaidEventService : IDisposable
 
         try
         {
-            var latestFolder = FindLatestLogSubfolder(folderPath);
+            var latestFolder = GetLatestLogSubfolderCached(folderPath);
             if (latestFolder == null) return;
 
             var appLog = Directory.GetFiles(latestFolder, "*application*.log", SearchOption.TopDirectoryOnly)
