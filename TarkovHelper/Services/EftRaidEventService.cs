@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text.RegularExpressions;
 using TarkovHelper.Models;
@@ -168,7 +169,7 @@ public sealed class EftRaidEventService : IDisposable
     private bool _isWatching;
     private bool _isDisposed;
 
-    private readonly Dictionary<string, long> _filePositions = new();
+    private readonly ConcurrentDictionary<string, long> _filePositions = new();
     private DateTime _lastApplicationEventTime = DateTime.MinValue;
     private DateTime _lastNetworkEventTime = DateTime.MinValue;
 
