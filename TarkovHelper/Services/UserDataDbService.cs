@@ -12,8 +12,8 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class UserDataDbService
 {
-    private static UserDataDbService? _instance;
-    public static UserDataDbService Instance => _instance ??= new UserDataDbService();
+    private static readonly Lazy<UserDataDbService> _instance = new(() => new UserDataDbService());
+    public static UserDataDbService Instance => _instance.Value;
 
     private readonly string _databasePath;
     private bool _isInitialized;

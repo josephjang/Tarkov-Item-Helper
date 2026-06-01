@@ -13,8 +13,8 @@ namespace TarkovHelper.Services;
 public sealed class EftRaidEventService : IDisposable
 {
     private static readonly ILogger _log = Log.For<EftRaidEventService>();
-    private static EftRaidEventService? _instance;
-    public static EftRaidEventService Instance => _instance ??= new EftRaidEventService();
+    private static readonly Lazy<EftRaidEventService> _instance = new(() => new EftRaidEventService());
+    public static EftRaidEventService Instance => _instance.Value;
 
     #region Regex Patterns
 

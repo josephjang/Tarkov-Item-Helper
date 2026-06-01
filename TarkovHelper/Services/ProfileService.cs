@@ -6,8 +6,8 @@ namespace TarkovHelper.Services;
 public sealed class ProfileService
 {
     private static readonly ILogger _log = Log.For<ProfileService>();
-    private static ProfileService? _instance;
-    public static ProfileService Instance => _instance ??= new ProfileService();
+    private static readonly Lazy<ProfileService> _instance = new(() => new ProfileService());
+    public static ProfileService Instance => _instance.Value;
 
     public const string PvpProfileId = "pvp";
     public const string PveProfileId = "pve";
