@@ -177,28 +177,7 @@ public partial class InProgressQuestInputDialog : Window
     }
 
     private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedQuestNames(TarkovTask task)
-    {
-        var lang = _loc.CurrentLanguage;
-
-        if (lang == AppLanguage.EN)
-        {
-            return (task.Name, string.Empty, false);
-        }
-
-        var localizedName = lang switch
-        {
-            AppLanguage.KO => task.NameKo,
-            AppLanguage.JA => task.NameJa,
-            _ => null
-        };
-
-        if (!string.IsNullOrEmpty(localizedName))
-        {
-            return (localizedName, task.Name, true);
-        }
-
-        return (task.Name, string.Empty, false);
-    }
+        => _loc.GetQuestDisplayName(task);
 
     private string GetLocalizedTraderName(string? trader)
     {

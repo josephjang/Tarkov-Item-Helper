@@ -1,3 +1,5 @@
+using TarkovHelper.Models;
+
 namespace TarkovHelper.Services;
 
 /// <summary>
@@ -6,6 +8,49 @@ namespace TarkovHelper.Services;
 /// </summary>
 public partial class LocalizationService
 {
+    #region Quest Name Localization
+
+    /// <summary>
+    /// Returns a quest's name in the current language, falling back to the English name when the
+    /// localized name is missing/empty. Single entry point for quest-name display across the app.
+    /// </summary>
+    public string GetQuestName(TarkovTask task) => GetQuestName(CurrentLanguage, task);
+
+    /// <summary>Pure, testable core of <see cref="GetQuestName(TarkovTask)"/>.</summary>
+    public static string GetQuestName(AppLanguage lang, TarkovTask task) => lang switch
+    {
+        AppLanguage.KO => string.IsNullOrEmpty(task.NameKo) ? task.Name : task.NameKo!,
+        AppLanguage.JA => string.IsNullOrEmpty(task.NameJa) ? task.Name : task.NameJa!,
+        _ => task.Name
+    };
+
+    /// <summary>
+    /// Returns the quest name plus an optional English subtitle for KO/JA list display.
+    /// EN: (Name, "", false). KO/JA with a translation: (localized, Name, true). Otherwise (Name, "", false).
+    /// </summary>
+    public (string DisplayName, string Subtitle, bool ShowSubtitle) GetQuestDisplayName(TarkovTask task)
+        => GetQuestDisplayName(CurrentLanguage, task);
+
+    /// <summary>Pure, testable core of <see cref="GetQuestDisplayName(TarkovTask)"/>.</summary>
+    public static (string DisplayName, string Subtitle, bool ShowSubtitle) GetQuestDisplayName(AppLanguage lang, TarkovTask task)
+    {
+        if (lang == AppLanguage.EN)
+            return (task.Name, string.Empty, false);
+
+        var localized = lang switch
+        {
+            AppLanguage.KO => task.NameKo,
+            AppLanguage.JA => task.NameJa,
+            _ => null
+        };
+
+        return string.IsNullOrEmpty(localized)
+            ? (task.Name, string.Empty, false)
+            : (localized!, task.Name, true);
+    }
+
+    #endregion
+
     #region In-Progress Quest Input
 
     public string InProgressQuestInputButton => CurrentLanguage switch

@@ -1412,25 +1412,26 @@ public partial class MainWindow : Window
 
             if (tasksByQuestId.TryGetValue(evt.QuestId, out var task))
             {
+                var questName = _loc.GetQuestName(task);
                 var message = evt.EventType switch
                 {
                     QuestEventType.Started => _loc.CurrentLanguage switch
                     {
-                        AppLanguage.KO => $"퀘스트 시작: {task.Name}",
-                        AppLanguage.JA => $"クエスト開始: {task.Name}",
-                        _ => $"Quest Started: {task.Name}"
+                        AppLanguage.KO => $"퀘스트 시작: {questName}",
+                        AppLanguage.JA => $"クエスト開始: {questName}",
+                        _ => $"Quest Started: {questName}"
                     },
                     QuestEventType.Completed => _loc.CurrentLanguage switch
                     {
-                        AppLanguage.KO => $"퀘스트 완료: {task.Name}",
-                        AppLanguage.JA => $"クエスト完了: {task.Name}",
-                        _ => $"Quest Completed: {task.Name}"
+                        AppLanguage.KO => $"퀘스트 완료: {questName}",
+                        AppLanguage.JA => $"クエスト完了: {questName}",
+                        _ => $"Quest Completed: {questName}"
                     },
                     QuestEventType.Failed => _loc.CurrentLanguage switch
                     {
-                        AppLanguage.KO => $"퀘스트 실패: {task.Name}",
-                        AppLanguage.JA => $"クエスト失敗: {task.Name}",
-                        _ => $"Quest Failed: {task.Name}"
+                        AppLanguage.KO => $"퀘스트 실패: {questName}",
+                        AppLanguage.JA => $"クエスト失敗: {questName}",
+                        _ => $"Quest Failed: {questName}"
                     },
                     _ => ""
                 };
