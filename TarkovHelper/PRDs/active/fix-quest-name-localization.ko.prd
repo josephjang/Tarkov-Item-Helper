@@ -1,0 +1,285 @@
+# 퀘스트명 현지화(KO/JA) — 근본 원인 해결 PRD
+
+> 이 문서는 영문 정본 `fix-quest-name-localization.prd`의 한국어 번역본입니다 (1:1 대응).
+> 내용 충돌 시 영문 정본을 기준으로 합니다.
+
+## Overview
+
+- **Status**: In Progress (코드/테스트/PRD는 PR; DB는 별도 브랜치로 분리)
+- **Created**: 2026-06-13
+- **Updated**: 2026-06-13
+- **Owner**: josephjang
+- **Related Agents**: db-schema-analyzer, service-architect, wpf-xaml-specialist
+- **원문(정본)**: `fix-quest-name-localization.prd` (영문, 1:1 동기화 유지)
+- **범위 주의**: 이 결함은 특정 언어에 국한되지 않는 **일반적 현지화 문제**로, 앱이 지원하는 모든
+  비영어 언어(현재 한국어·일본어)에 동일하게 적용된다. 한국어는 처음 보고된 증상이라 예시로 사용할
+  뿐, 모든 수정은 `NameJA`/JA에도 똑같이 적용된다. 근본 원인은 **TarkovDBEditor** 데이터 파이프라인과
+  **TarkovHelper** WPF 앱 양쪽에 걸쳐 있다. 문서 전반에서 모호어 "Helper" 대신 정확한 컴포넌트 명칭을 사용한다.
+
+## Background: 현재 데이터 갱신 프로세스
+
+문제를 정의하기 전에, 퀘스트 데이터(특히 다국어 이름)가 어떤 소스에서 와서 어떤 단계를 거쳐
+`tarkov_data.db`에 쓰이고 TarkovHelper UI까지 도달하는지 정리한다. 본 PRD의 모든 결함은 아래
+단계 중 한 곳에 위치한다.
+
+### 소스 및 역할 (2-소스 구조)
+
+| 소스 | 역할 (제공 데이터) | 본 PRD에서의 의미 |
+|------|-------------------|------------------|
+| **Fandom EFT Wiki** | 퀘스트 **존재 목록**, 트레이더, MinLevel, MinScavKarma, KappaRequired, Faction, RequiredEdition/ExcludedEdition, RequiredDecodeCount, RequiredPrestigeLevel, 선행·대체 퀘스트, 목표, 필요 아이템 (`WikiQuestService.Extract*`) | 퀘스트 **뼈대**(영문명 + 메타데이터)를 만드는 기본 소스 |
+| **tarkov.dev GraphQL API** | `Id`(BsgId), **`NameEN`/`NameKO`/`NameJA`**(공식 다국어 이름), `normalizedName`, `wikiLink` (`TarkovDevDataService.FetchAllQuestsAsync`) | **현지화(KO/JA) 이름의 유일한 출처.** 본 문제의 핵심 |
+| **수동 큐레이션 (TarkovDBEditor)** | 승인 플래그(`IsApproved`, `*Approved`), 지도 좌표/마커 | 사람이 검수·보정하는 계층 |
+
+> 두 소스는 매칭으로 결합된다: wiki 퀘스트 레코드에 tarkov.dev의 `Id`와 번역을 얹는다.
+
+### 파이프라인 단계 (TarkovDBEditor → tarkov_data.db → TarkovHelper)
+
+```
+[1] 소스 캐싱
+    (a) Wiki 캐시: WikiCacheService/WikiQuestService -> PageContent 캐시 (리비전 검사)
+    (b) dev 캐시 : TarkovDBEditor "Debug > Cache Tarkov Dev Data"
+                   -> CacheAllDataAsync -> FetchAllQuestsAsync (라이브 GraphQL: en + ko + ja)
+                   -> SaveQuestsCacheAsync -> wiki_data/cache/tarkov_dev_quests.json
+                   참고: 번역을 라이브 API에서 가져오는 유일한 단계
+        |
+        v
+[2] DB 빌드: "Debug > Refresh Data"(RefreshDataAsync, wiki 네트워크) 또는
+             "Refresh Data from Cache"(RefreshDataFromCacheAsync, 캐시 전용)
+             - wiki 퀘스트 열거(questPages)
+             - dev 퀘스트는 LoadCachedQuestsAsync(캐시)로만 로드 (라이브 호출 안 함)
+             - 매칭: wikiLink(1차) -> normalizedName(2차)
+             - 매칭 성공 -> BsgId/NameEN/NameKO/NameJA = dev 값
+               매칭 실패 -> NameKO = 영문 questName (폴백)
+             - Upsert: Quests, QuestRequirements, QuestObjectives, OptionalQuests,
+                       QuestRequiredItems, Items, Traders, Hideout*
+        |
+        v
+[3] 검증/승인: _schema_meta(에디터 컬럼), IsApproved/*Approved 플래그(수동),
+              ContentHash(변경 감지), Revision 정보, Dogtag 자동 생성
+        |
+        v
+[4] 배포: db_version.txt 증가 + tarkov_data.db 커밋/푸시 (GitHub main)
+        |
+        v
+[5] 런타임: DatabaseUpdateService(5분 타이머) -> 신버전 다운로드 -> DatabaseUpdated 이벤트
+           -> QuestDbService SELECT Name, NameKO, NameJA -> TarkovTask.NameKo
+           -> TarkovHelper가 `NameKo ?? Name` 으로 표시
+```
+
+### 핵심 특성 (문제와 직결)
+
+- **번역의 신선도는 전적으로 [1](b) 단계에 의존한다.** [2] DB 빌드는 dev를 캐시로만 읽으므로,
+  캐시가 갱신되지 않으면 API에 번역이 있어도 DB에 반영되지 않는다.
+- dev 캐시 파일(`tarkov_dev_quests.json`)은 **리포지토리에 커밋되지 않아**, 빌드 결과가 빌드한
+  사람의 로컬 캐시 상태에 의존한다.
+- [3] 검증은 wiki 메타데이터 중심이며, **`NameKO`/`NameJA`가 실제로 채워졌는지 검증하는 단계가
+  없다**. 그래서 번역 누락이 조용히 통과된다.
+
+## Problem Statement (문제 정의)
+
+TarkovHelper를 비영어 언어(한국어 또는 일본어)로 실행해도 **대부분의 퀘스트명이 여전히 영문으로
+표시**된다. 원인은 단일하지 않고 데이터 → 파이프라인 → 표시 계층에 걸쳐 있다. 각 계층을 분리해
+정의한다. (한국어를 예시로 들지만 일본어도 동일하게 영향받는다.)
+
+### 증상
+
+- 언어를 KO(또는 JA)로 설정해도 퀘스트 목록/상세/지도/알림 전반에서 퀘스트명이 영문으로 렌더링된다.
+- TarkovDBEditor로 `tarkov_data.db`의 `Quests` 테이블을 열면 `Name (KO)`/`Name (JA)` 컬럼이 ~100% 영문이다.
+
+### 근본 원인 1 (주원인) — 현지화 이름 컬럼(`NameKO`/`NameJA`)이 `tarkov_data.db`에서 사실상 전부 영문
+
+- tarkov.dev GraphQL API는 상당수 태스크에 현지화 이름을 제공한다(한국어 **약 40~45%**, 직접 조회 검증:
+  `사격 연습`, `데뷔`, `건스미스 - 파트 1`, `스파 관광 - 파트 1`; 일본어도 유사). `normalizedName`은 영어 kebab-case.
+- 그러나 배포된 `tarkov_data.db`(2026-05-05 빌드)의 NameKO에는 한국어가 **약 4건**
+  (`광신도 - 파트 2`, `건스미스 - 파트 5/12/20`)뿐이었다.
+- 즉 **API에는 현지화 이름이 있는데 DB에는 반영되지 않은 상태**다.
+
+### 근본 원인 2 (재발 메커니즘) — Refresh 파이프라인이 stale 캐시에 종속
+
+- NameKO는 "wiki ↔ tarkov.dev 캐시" 매칭으로 채워진다(`RefreshDataService.cs:575-591`). 매칭
+  자체는 정상 동작한다(`NormalizeQuestName("Gunsmith - Part 1") = gunsmith-part-1`, API의
+  `normalizedName`과 일치).
+- 문제는 **tarkov.dev 퀘스트 캐시**(`wiki_data/cache/tarkov_dev_quests.json`)다:
+  - 리포지토리에 **부재**하며, 결과가 로컬 빌드 상태에 의존한다.
+  - 두 Refresh 경로(`RefreshDataAsync`, `RefreshDataFromCacheAsync`) 모두 dev 퀘스트를
+    `LoadCachedQuestsAsync`(캐시)로만 읽고 **라이브 API를 재호출하지 않는다**
+    (`RefreshDataService.cs:495`, `:1175`).
+  - 캐시를 라이브로 채우는 곳은 `Debug > Cache Tarkov Dev Data`(`CacheAllDataAsync` →
+    `FetchAllQuestsAsync` → `SaveQuestsCacheAsync`) 하나뿐이다.
+- 결과: 캐시가 stale/비어있으면 매칭이 실패하고 전 퀘스트가 else 분기로 빠져
+  **`NameKO = 영문 questName`** 으로 저장된다(`RefreshDataService.cs:587-589`).
+- 이는 코드 버그가 아니라 **갱신 절차가 끊긴(stale cache) 구조적 결함**이며, 방치 시 재발한다.
+
+### 근본 원인 3 (데이터 일관성) — 퀘스트 NameKO 폴백 가드 누락
+
+- `TarkovDevDataService.cs:462`는 한국어가 없을 때 영문 `name`을 NameKO에 저장한다
+  (`NameKO = koNames.TryGetValue(id,...) ? ko : name`).
+- 트레이더/아이템 경로(`:562-563`, `:661`, `:701`)에 있는 `if (nameKo == name) nameKo = null`
+  가드가 **퀘스트 경로엔 없다**.
+- 그래서 미번역 퀘스트의 NameKO가 NULL이 아니라 영문으로 채워져, "번역 없음" 상태가 데이터에서
+  구분되지 않고 폴백 로직 일관성이 깨진다(표시 결과는 동일).
+
+### 근본 원인 4 (표시 계층) — NameKo를 무시하는 코드 2곳
+
+대부분의 화면은 `NameKo ?? Name`으로 이미 현지화되어 있으나, 다음 2곳은 영문 `Name`을 직접 사용한다.
+
+- **`MainWindow.xaml.cs:1419-1433`** — 퀘스트 시작/완료/실패 **토스트 알림**이 KO/JA 분기에서도
+  `task.Name`(영문)을 사용.
+- **`SyncResultDialog.xaml.cs:153,154,164`** — 선택 퀘스트 그룹 라벨/선택지 이름이 `Task.Name`을
+  직접 사용.
+- 참고: `SyncResultDialog.xaml.cs:197`과 `LogSyncService.cs:873/889/936`의 `task.Name`은 표시용이
+  아니라 매칭/식별용 값이므로 영문 유지가 정상이며 수정 대상이 아니다.
+
+## Goals (목표)
+
+- [x] Goal 1: `tarkov_data.db`의 `Quests.NameKO`가 현행 tarkov.dev 한국어(~40~45%)를 반영하고 배포된다.
+- [x] Goal 2: Refresh 파이프라인이 stale 캐시로 번역을 조용히 누락하지 않는다(재발 방지).
+- [x] Goal 3: TarkovHelper의 모든 퀘스트명 표시 경로가 한국어를 사용한다(토스트·SyncResultDialog 포함).
+- [x] Goal 4: 미번역 퀘스트는 NameKO에 NULL을 저장해 폴백 일관성을 확보한다(가드 추가).
+- [x] Goal 5: 현지화 로직과 데이터 커버리지 회귀를 자동화 테스트로 커버한다.
+
+## Non-Goals (범위 제외)
+
+- 소스 전략 변경(wiki+dev 매칭 → tarkov.dev 단일화). 별도 검토로 보류.
+- tarkov.dev가 번역하지 않는 퀘스트를 한국어로 만드는 것(데이터 한계, 불가능).
+- 지도 좌표/마커 큐레이션(TarkovDBEditor 수동 관리, 무관).
+- `tarkov_data.db` 스키마 변경(NameKO 컬럼은 이미 존재).
+
+## Implementation Plan (구현 계획)
+
+### Phase 1: 데이터/파이프라인 복구 (TarkovDBEditor — 근본 원인 1·2·3)
+
+**목표**: NameKO에 한국어를 채우고, 파이프라인이 재발하지 않도록 보강한다.
+
+- [x] Task 1.1: 퀘스트 NameKO/NameJA 폴백 가드 추가
+  - Agent: db-schema-analyzer
+  - Files: `TarkovDBEditor/Services/TarkovDevDataService.cs:462-463`
+  - Notes: `if (nameKo == name) nameKo = null;`(및 JA) 적용해 미번역 시 NULL 저장. 트레이더/아이템과
+    일관. 매칭(병합)을 테스트 가능한 static 메서드로 추출(Task 3.2 연계).
+
+- [x] Task 1.2: stale 캐시로 인한 조용한 폴백 방지 (재발 방지)
+  - Agent: service-architect
+  - Files: `TarkovDBEditor/Services/RefreshDataService.cs`, `TarkovDBEditor/MainWindow.xaml.cs`
+  - Notes: (A) 캐시 부재/만료 시 `RefreshDataAsync`가 `CacheAllDataAsync`를 선행 호출, 또는
+    (B) 캐시가 없거나 오래되면 명확히 경고/차단. 최소한 캐시 누락이 영문 폴백으로 조용히
+    이어지면 안 됨. (에디터 도구이므로 런타임의 "tarkov.dev 직접 호출 금지" 정책은 무관.)
+
+- [x] Task 1.3: 캐시 재생성 + DB 재빌드 (운영 작업)
+  - Agent: db-schema-analyzer
+  - Files: `TarkovHelper/Assets/tarkov_data.db` (산출물)
+  - Notes: TarkovDBEditor에서 `Debug > Cache Tarkov Dev Data`(라이브) → `Debug > Refresh Data` 실행.
+    NameKO 한국어 비율이 API 수준(~40~45%)에 근접하는지 확인.
+
+- [x] Task 1.4: 버전 업 및 배포
+  - Files: `TarkovHelper/Assets/db_version.txt`, `TarkovHelper/Assets/tarkov_data.db`
+  - Notes: `db_version.txt` 증가 후 두 파일 커밋/푸시 → `DatabaseUpdateService`로 자동 배포.
+
+### Phase 2: 표시 계층 (TarkovHelper — 근본 원인 4)
+
+**목표**: 모든 퀘스트명 표시 경로를 한국어로 통일한다.
+
+- [x] Task 2.1: 공유 헬퍼 `GetQuestName(TarkovTask)` 추가
+  - Agent: service-architect
+  - Files: `TarkovHelper/Services/LocalizationService.Quest.cs`
+  - Notes: `lang switch { KO => NameKo ?? Name, JA => NameJa ?? Name, _ => Name }`. 단일 진입점화.
+
+- [x] Task 2.2: 토스트 알림 한국어화
+  - Agent: wpf-xaml-specialist
+  - Files: `TarkovHelper/MainWindow.xaml.cs:1419-1433`
+  - Notes: `task.Name` → `_loc.GetQuestName(task)`로 교체(시작/완료/실패 3분기).
+
+- [x] Task 2.3: SyncResultDialog 한국어화
+  - Agent: wpf-xaml-specialist
+  - Files: `TarkovHelper/Windows/SyncResultDialog.xaml.cs:153,154,164`
+  - Notes: 그룹 라벨/선택지 표시명을 `GetQuestName`으로 교체. `:197` 식별자는 그대로 둠.
+
+- [x] Task 2.4 (선택): 중복 헬퍼 통합
+  - Files: `TarkovHelper/Pages/ItemsPage.xaml.cs:1348`, `QuestListPage.xaml.cs:365`,
+    `Windows/InProgressQuestInputDialog.xaml.cs:179`
+  - Notes: 기존 로컬 헬퍼들을 `LocalizationService.GetQuestName` 위임으로 정리.
+
+### Phase 3: 자동화 테스트 (신규 테스트 프로젝트 — Goal 5)
+
+**목표**: 수정을 자동 검증 가능하게 하고 데이터 회귀를 막는다.
+
+- [x] Task 3.1: `TarkovHelper.Tests`(xUnit, net8.0-windows) 생성 후 `TarkovHelper.sln`에 추가
+  - Agent: service-architect
+  - Files: `TarkovHelper.Tests/TarkovHelper.Tests.csproj` (신규), `TarkovHelper.sln`
+  - Notes: TarkovHelper(및 Task 3.2용 TarkovDBEditor) 참조. 솔루션 최초의 테스트 프로젝트.
+
+- [x] Task 3.2: 단위 테스트 — 퀘스트 NameKO/NameJA 폴백 가드
+  - Files: `TarkovHelper.Tests/QuestNameMergeTests.cs` (신규)
+  - Notes: Task 1.1에서 추출한 병합 메서드 검증: ko 존재 → 한국어; ko == en → NULL; ko 없음 → NULL.
+
+- [x] Task 3.3: 단위 테스트 — `LocalizationService.GetQuestName`
+  - Files: `TarkovHelper.Tests/LocalizationQuestNameTests.cs` (신규)
+  - Notes: KO → NameKo; JA → NameJa; EN → Name; NameKo == null → Name 폴백(KO).
+
+- [x] Task 3.4: 데이터 회귀 테스트 — `tarkov_data.db` 한국어 커버리지
+  - Files: `TarkovHelper.Tests/QuestDataCoverageTests.cs` (신규)
+  - Notes: `Assets/tarkov_data.db`를 읽기 전용으로 열어 NameKO가 한글/≠Name인 퀘스트 비율을
+    계산하고 임계값(예: 0.30) 이상인지 단언. 근본 원인 1을 자동으로 잡는 가드이며, stale 데이터
+    DB가 배포되면 CI에서 실패한다.
+
+### Phase 4: 검증 및 배포
+
+**목표**: 데이터·표시를 end-to-end로 확인한다.
+
+- [x] Task 4.1: `dotnet test TarkovHelper.sln` 통과(Phase 3 스위트).
+- [x] Task 4.2: KO 수동 확인 — 퀘스트 목록/상세/지도/추천/토스트/SyncResultDialog 모두 한국어.
+- [x] Task 4.3: 폴백 확인 — 미번역 퀘스트가 깨짐 없이 영문으로 폴백.
+
+## Technical Decisions (기술 결정)
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| 2-소스 전략 유지(wiki+dev 매칭) | 사용자 지정 범위 제외. 기존 구조 내 결함만 해결 | 2026-06-13 |
+| 주 수정 대상은 데이터/파이프라인 | 증상 대부분이 영문 NameKO(원인 1·2). 표시 코드(원인 4)는 보조 | 2026-06-13 |
+| 퀘스트에 `nameKo==name→null` 가드 적용 | 트레이더/아이템과 일관, 미번역 상태를 데이터에서 구분 | 2026-06-13 |
+| 공유 `GetQuestName` 헬퍼 도입 | 3곳 중복 통합 + 신규 수정 2곳 단일 경로화 | 2026-06-13 |
+| 최초 테스트 프로젝트(xUnit) 도입 | 테스트 부재. 데이터 커버리지 테스트로 stale-DB 회귀 자동 방지 | 2026-06-13 |
+
+## Dependencies (의존성)
+
+- [x] tarkov.dev API 가용성(캐시 재생성 시 네트워크 필요) — 외부
+- [x] `TarkovTask.NameKo`/`NameJa` 모델 필드 — 이미 존재
+- [x] `LocalizationService.CurrentLanguage` — 이미 존재
+- [x] `DatabaseUpdateService` 배포 경로 — 이미 존재
+
+## Progress Log (진행 기록)
+
+| Date | Update | By |
+|------|--------|-----|
+| 2026-06-13 | PRD 생성 (근본 원인 4종 정의; 현재 데이터 갱신 프로세스 문서화; 자동화 테스트 추가) | josephjang |
+| 2026-06-13 | Phase 1~4 구현: NameKO/NameJA NULL 가드 + 테스트 가능한 `ResolveLocalizedQuestName`; 빈 dev 캐시 시 refresh 차단; `GetQuestName`/`GetQuestDisplayName` 추가 후 모든 표시 경로(토스트·SyncResultDialog) + 중복 헬퍼 3곳 통합; `TarkovHelper.Tests`(xUnit) 13개 통과(데이터 커버리지 가드 포함). 앱에서 한국어+트레이더/레벨 확인. | josephjang |
+| 2026-06-13 | DB 비고: 에디터 Fetch Wiki Data가 위키 필드(트레이더/레벨)를 NULL로 만들어, 배포 DB는 translate-only 패치(normalizedName 기준 tarkov.dev KO/JA 적용)로 생성 → 288/488(59%) 한국어, 위키 메타데이터 전부 보존. DB+버전은 사용자 전체에 영향이 커 **별도 브랜치로 분리**, 코드/테스트/PRD만 별도로 push. | josephjang |
+
+## Completion Criteria (완료 기준)
+
+- [x] 모든 Goal 달성
+- [x] `dotnet build TarkovHelper.sln` 성공
+- [x] `dotnet test TarkovHelper.sln` 성공(데이터 커버리지 테스트 포함) — 13/13
+- [x] 재빌드 DB의 NameKO 한국어 비율 ≥30% 가드 충족 — 59%(288/488) *(DB 브랜치)*
+- [x] KO에서 모든 표시 경로(토스트·SyncResultDialog 포함)가 한국어
+- [x] 미번역 퀘스트가 깨짐 없이 영문 폴백
+- [x] `db_version.txt` 증가(1.0.10) 및 배포 반영 *(DB 브랜치)*
+
+## Risks & Mitigations (위험 및 대응)
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| 일부 퀘스트는 API도 미번역 → 영문 잔존 | 중간 | 데이터 한계로 수용. NULL 가드로 추후 보강 용이 |
+| 자동 캐시 갱신이 에디터 워크플로 변경 | 중간 | 경고/차단(옵션 B)으로 시작, 자동 선행 호출은 선택 |
+| DB 재빌드가 다른 큐레이션 필드(에디션/카르마)에 영향 | 중간 | 전후 diff 확인, 승인 필드 회귀 점검 |
+| `task.Name` 표시 사용처 잔존 | 낮음 | 전체 `task.Name` 표시 사용처 grep 재점검 |
+| 테스트 프로젝트의 WPF(net8.0-windows) 참조 마찰 | 낮음 | 테스트 대상 로직을 WPF-무관하게 유지(LocalizationService 로직, DB 읽기) |
+
+---
+
+## Archive Info (완료 시 작성)
+
+- **Completed**: YYYY-MM-DD
+- **Summary**:
+- **Actual vs Planned**:
+- **Lessons Learned**:
+- **Follow-up Items**:

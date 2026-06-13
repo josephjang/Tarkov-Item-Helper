@@ -1,0 +1,286 @@
+# Quest Name Localization (KO/JA) — Root-Cause Fix PRD
+
+## Overview
+
+- **Status**: In Progress (code/tests/PRD in PR; DB shipped on a separate branch)
+- **Created**: 2026-06-13
+- **Updated**: 2026-06-13
+- **Owner**: josephjang
+- **Related Agents**: db-schema-analyzer, service-architect, wpf-xaml-specialist
+- **Translations**: Korean companion at `fix-quest-name-localization.ko.prd` (kept in sync 1:1)
+- **Scope note**: This is a general (language-agnostic) localization defect affecting every non-English language the app supports — Korean and Japanese today. Korean is used as the running example because it was the reported symptom, but every fix applies equally to `NameJA`/JA. Root causes span both the **TarkovDBEditor** data pipeline and the **TarkovHelper** WPF app; precise component names are used throughout (not the ambiguous term "Helper").
+
+## Background: Current Data Update Process
+
+Before defining the problem, this section describes how quest data — particularly multilingual
+names — flows from upstream sources into `tarkov_data.db` and finally to the TarkovHelper UI.
+Every defect in this PRD maps to a specific stage below.
+
+### Sources and Roles (two-source design)
+
+| Source | Role (data provided) | Relevance to this PRD |
+|--------|----------------------|-----------------------|
+| **Fandom EFT Wiki** | Quest **existence list**, trader, MinLevel, MinScavKarma, KappaRequired, Faction, RequiredEdition/ExcludedEdition, RequiredDecodeCount, RequiredPrestigeLevel, prerequisite/alternative quests, objectives, required items (`WikiQuestService.Extract*`) | Builds the quest **skeleton** (English name + metadata) |
+| **tarkov.dev GraphQL API** | `Id` (BsgId), **`NameEN`/`NameKO`/`NameJA`** (official localized names), `normalizedName`, `wikiLink` (`TarkovDevDataService.FetchAllQuestsAsync`) | **The only source of localized (KO/JA) names.** Central to this problem |
+| **Manual curation (TarkovDBEditor)** | Approval flags (`IsApproved`, `*Approved`), map coordinates/markers | Human review/correction layer |
+
+> The two sources are joined by matching: tarkov.dev `Id` + translations are layered onto each
+> wiki-sourced quest record.
+
+### Pipeline Stages (TarkovDBEditor → tarkov_data.db → TarkovHelper)
+
+```
+[1] Source caching
+    (a) Wiki cache: WikiCacheService/WikiQuestService -> PageContent cache (revision-checked)
+    (b) dev cache : TarkovDBEditor "Debug > Cache Tarkov Dev Data"
+                    -> CacheAllDataAsync -> FetchAllQuestsAsync (LIVE GraphQL: en + ko + ja)
+                    -> SaveQuestsCacheAsync -> wiki_data/cache/tarkov_dev_quests.json
+                    NOTE: the ONLY stage that fetches translations from the live API
+        |
+        v
+[2] DB build: "Debug > Refresh Data" (RefreshDataAsync, wiki over network) OR
+              "Refresh Data from Cache" (RefreshDataFromCacheAsync, cache-only)
+              - enumerate wiki quests (questPages)
+              - load tarkov.dev quests via LoadCachedQuestsAsync (CACHE ONLY; never live)
+              - match wiki<->dev by wikiLink (1st) then normalizedName (2nd)
+              - match hit  -> BsgId/NameEN/NameKO/NameJA = dev values
+                match miss -> NameKO = English questName (fallback)
+              - upsert: Quests, QuestRequirements, QuestObjectives, OptionalQuests,
+                        QuestRequiredItems, Items, Traders, Hideout*
+        |
+        v
+[3] Validation/approval: _schema_meta (editor columns), IsApproved/*Approved flags (manual),
+                         ContentHash (change detection), Revision info, Dogtag auto-generation
+        |
+        v
+[4] Release: bump db_version.txt + commit/push tarkov_data.db (GitHub main)
+        |
+        v
+[5] Runtime: DatabaseUpdateService (5-min timer) -> download newer DB -> DatabaseUpdated event
+            -> QuestDbService SELECT Name, NameKO, NameJA -> TarkovTask.NameKo
+            -> TarkovHelper displays `NameKo ?? Name`
+```
+
+### Key Characteristics (directly tied to the problem)
+
+- **Translation freshness depends entirely on stage [1](b).** Stage [2] reads tarkov.dev from cache
+  only, so if the cache is not refreshed, localizations present in the API never reach the DB.
+- The dev cache file (`tarkov_dev_quests.json`) is **not committed to the repository**, so build
+  output depends on the local cache state of whoever built it.
+- Stage [3] validation centers on wiki metadata; **there is no step that validates whether
+  `NameKO`/`NameJA` were actually populated**, so missing translations pass through silently.
+
+## Problem Statement
+
+When TarkovHelper runs in a non-English language (Korean or Japanese), **most quest names are still
+shown in English**. The cause is not singular; it spans the data, pipeline, and display layers. Each
+layer is defined separately. (Korean is the running example; Japanese is affected identically.)
+
+### Symptom
+
+- Even with language set to KO (or JA), quest names render in English across the quest list, detail
+  panel, map, and notifications.
+- Opening the `Quests` table of `tarkov_data.db` in TarkovDBEditor shows the `Name (KO)`/`Name (JA)`
+  columns as ~100% English.
+
+### Root Cause 1 (primary) — localized name columns (`NameKO`/`NameJA`) in `tarkov_data.db` are effectively all English
+
+- The tarkov.dev GraphQL API provides localized names for a large share of tasks (Korean for
+  **~40–45%**, verified by direct query: `사격 연습`, `데뷔`, `건스미스 - 파트 1`, `스파 관광 - 파트 1`;
+  Japanese similarly); `normalizedName` is English kebab-case.
+- The shipped `tarkov_data.db` (built 2026-05-05) contained Korean for only **~4 quests**
+  (`광신도 - 파트 2`, `건스미스 - 파트 5/12/20`).
+- That is, **localized names exist in the API but were never reflected into the DB.**
+
+### Root Cause 2 (recurrence mechanism) — Refresh pipeline depends on a stale cache
+
+- NameKO is populated by wiki↔tarkov.dev-cache matching (`RefreshDataService.cs:575-591`). The
+  matching itself works correctly (`NormalizeQuestName("Gunsmith - Part 1") = gunsmith-part-1`,
+  matching the API `normalizedName`).
+- The defect is the **tarkov.dev quest cache** (`wiki_data/cache/tarkov_dev_quests.json`):
+  - It is **absent from the repository**; results depend on local build state.
+  - Both refresh paths (`RefreshDataAsync`, `RefreshDataFromCacheAsync`) read tarkov.dev quests via
+    `LoadCachedQuestsAsync` (cache) and **never re-fetch the live API**
+    (`RefreshDataService.cs:495`, `:1175`).
+  - Only `Debug > Cache Tarkov Dev Data` (`CacheAllDataAsync` → `FetchAllQuestsAsync` →
+    `SaveQuestsCacheAsync`) populates the cache from the live API.
+- Result: if the cache is stale/empty, matching fails and every quest falls to the else branch,
+  storing **`NameKO = English questName`** (`RefreshDataService.cs:587-589`).
+- This is not a code bug but a **structural gap in the update procedure (stale cache)** that will
+  recur if left unaddressed.
+
+### Root Cause 3 (data consistency) — missing fallback guard for quest NameKO
+
+- `TarkovDevDataService.cs:462` stores the English `name` into NameKO when no Korean exists
+  (`NameKO = koNames.TryGetValue(id,...) ? ko : name`).
+- The `if (nameKo == name) nameKo = null` guard present on the trader/item paths
+  (`:562-563`, `:661`, `:701`) is **absent on the quest path**.
+- Consequently untranslated quests store English (not NULL) in NameKO, so "no translation" is
+  indistinguishable in the data and fallback logic is inconsistent (display result is identical).
+
+### Root Cause 4 (display layer) — two code paths ignore NameKo
+
+Most views are already localized via `NameKo ?? Name`, but these two use English `Name` directly:
+
+- **`MainWindow.xaml.cs:1419-1433`** — quest started/completed/failed **toast notifications** use
+  `task.Name` even in the KO/JA branches.
+- **`SyncResultDialog.xaml.cs:153,154,164`** — alternative-quest group labels and choice names use
+  `Task.Name` directly.
+- Note: `SyncResultDialog.xaml.cs:197` and `LogSyncService.cs:873/889/936` use `task.Name` as a
+  matching/identifier value (not for display); English is correct there and they are out of scope.
+
+## Goals
+
+- [x] Goal 1: `Quests.NameKO`/`NameJA` in `tarkov_data.db` reflect current tarkov.dev localizations and are released.
+- [x] Goal 2: The refresh pipeline no longer silently drops translations due to a stale cache (recurrence prevented).
+- [x] Goal 3: Every quest-name display path in TarkovHelper uses the localized name (including toasts and SyncResultDialog).
+- [x] Goal 4: Untranslated quests store NULL in NameKO/NameJA (guard added) for consistent fallback.
+- [x] Goal 5: Automated tests cover the localization logic and a data-coverage regression check.
+
+## Non-Goals (Scope Out)
+
+- Changing the source strategy (wiki+dev matching → tarkov.dev-only). Deferred to a separate review.
+- Producing Korean for quests tarkov.dev does not translate (data limitation; impossible).
+- Map coordinate/marker curation (manually managed in TarkovDBEditor; unrelated).
+- Schema changes to `tarkov_data.db` (the NameKO column already exists).
+
+## Implementation Plan
+
+### Phase 1: Data/Pipeline Recovery (TarkovDBEditor — Root Causes 1, 2, 3)
+
+**Goal**: Populate Korean into NameKO and harden the pipeline against recurrence.
+
+- [x] Task 1.1: Add the NameKO/NameJA fallback guard for quests
+  - Agent: db-schema-analyzer
+  - Files: `TarkovDBEditor/Services/TarkovDevDataService.cs:462-463`
+  - Notes: Apply `if (nameKo == name) nameKo = null;` (and JA) to store NULL when untranslated;
+    consistent with trader/item paths. Extract the merge into a testable static method (see Task 3.2).
+
+- [x] Task 1.2: Prevent stale-cache silent fallback (recurrence prevention)
+  - Agent: service-architect
+  - Files: `TarkovDBEditor/Services/RefreshDataService.cs`, `TarkovDBEditor/MainWindow.xaml.cs`
+  - Notes: Option (A) have `RefreshDataAsync` auto-run `CacheAllDataAsync` when the dev cache is
+    missing/expired; Option (B) hard-warn/block when the cache is absent or older than a threshold.
+    At minimum, a missing cache must not silently degrade to English fallback. (Editor-only tool, so
+    the runtime "no live tarkov.dev" policy does not apply.)
+
+- [x] Task 1.3: Regenerate cache + rebuild DB (operational)
+  - Agent: db-schema-analyzer
+  - Files: `TarkovHelper/Assets/tarkov_data.db` (artifact)
+  - Notes: In TarkovDBEditor run `Debug > Cache Tarkov Dev Data` (live) then `Debug > Refresh Data`.
+    Verify NameKO Korean ratio approaches the API level (~40–45%).
+
+- [x] Task 1.4: Version bump and release
+  - Files: `TarkovHelper/Assets/db_version.txt`, `TarkovHelper/Assets/tarkov_data.db`
+  - Notes: Increment `db_version.txt`, commit/push both → distributed via `DatabaseUpdateService`.
+
+### Phase 2: Display Layer (TarkovHelper — Root Cause 4)
+
+**Goal**: Unify all quest-name display paths to use Korean.
+
+- [x] Task 2.1: Add shared `GetQuestName(TarkovTask)` helper
+  - Agent: service-architect
+  - Files: `TarkovHelper/Services/LocalizationService.Quest.cs`
+  - Notes: `lang switch { KO => NameKo ?? Name, JA => NameJa ?? Name, _ => Name }`. Single entry point.
+
+- [x] Task 2.2: Localize toast notifications
+  - Agent: wpf-xaml-specialist
+  - Files: `TarkovHelper/MainWindow.xaml.cs:1419-1433`
+  - Notes: Replace `task.Name` with `_loc.GetQuestName(task)` in all three (started/completed/failed).
+
+- [x] Task 2.3: Localize SyncResultDialog
+  - Agent: wpf-xaml-specialist
+  - Files: `TarkovHelper/Windows/SyncResultDialog.xaml.cs:153,154,164`
+  - Notes: Use `GetQuestName` for group label/choice display names; leave `:197` identifier as-is.
+
+- [x] Task 2.4 (optional): Consolidate duplicate helpers
+  - Files: `TarkovHelper/Pages/ItemsPage.xaml.cs:1348`, `QuestListPage.xaml.cs:365`,
+    `Windows/InProgressQuestInputDialog.xaml.cs:179`
+  - Notes: Delegate existing local helpers to `LocalizationService.GetQuestName`.
+
+### Phase 3: Automated Testing (new test project — Goal 5)
+
+**Goal**: Make the fixes verifiable automatically and guard against data regressions.
+
+- [x] Task 3.1: Create `TarkovHelper.Tests` (xUnit, net8.0-windows) and add to `TarkovHelper.sln`
+  - Agent: service-architect
+  - Files: `TarkovHelper.Tests/TarkovHelper.Tests.csproj` (new), `TarkovHelper.sln`
+  - Notes: Reference TarkovHelper (and TarkovDBEditor for Task 3.2). First test project in the solution.
+
+- [x] Task 3.2: Unit test — quest NameKO/NameJA fallback guard
+  - Files: `TarkovHelper.Tests/QuestNameMergeTests.cs` (new)
+  - Notes: Test the extracted merge method from Task 1.1: ko present → Korean; ko == en → NULL;
+    ko missing → NULL.
+
+- [x] Task 3.3: Unit test — `LocalizationService.GetQuestName`
+  - Files: `TarkovHelper.Tests/LocalizationQuestNameTests.cs` (new)
+  - Notes: KO → NameKo; JA → NameJa; EN → Name; NameKo == null → Name fallback (KO).
+
+- [x] Task 3.4: Data regression test — Korean coverage in `tarkov_data.db`
+  - Files: `TarkovHelper.Tests/QuestDataCoverageTests.cs` (new)
+  - Notes: Open `Assets/tarkov_data.db` read-only, compute fraction of Quests whose NameKO is
+    Hangul/≠Name, assert ≥ threshold (e.g., 0.30). This is the guard that would have caught Root
+    Cause 1; fails CI if a stale-data DB is shipped.
+
+### Phase 4: Verification & Release
+
+**Goal**: Confirm data and display end-to-end.
+
+- [x] Task 4.1: `dotnet test TarkovHelper.sln` green (Phase 3 suite).
+- [x] Task 4.2: Manual KO check — quest list/detail/map/recommendations/toast/SyncResultDialog all Korean.
+- [x] Task 4.3: Fallback check — untranslated quests degrade to English without breakage.
+
+## Technical Decisions
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| Keep two-source strategy (wiki+dev matching) | User-defined scope exclusion; fix defects within existing structure only | 2026-06-13 |
+| Primary fix is data/pipeline, not display | Most of the symptom is English NameKO (Causes 1, 2); display code (Cause 4) is secondary | 2026-06-13 |
+| Add `nameKo==name→null` guard to quests | Consistent with trader/item paths; distinguishes untranslated state in data | 2026-06-13 |
+| Introduce shared `GetQuestName` helper | Consolidate 3 duplicates + route the 2 new fixes through one path | 2026-06-13 |
+| Introduce first test project (xUnit) | No tests exist; data-coverage test prevents stale-DB regressions automatically | 2026-06-13 |
+
+## Dependencies
+
+- [x] tarkov.dev API availability (network needed for cache regeneration) — external
+- [x] `TarkovTask.NameKo`/`NameJa` model fields — already present
+- [x] `LocalizationService.CurrentLanguage` — already present
+- [x] `DatabaseUpdateService` distribution path — already present
+
+## Progress Log
+
+| Date | Update | By |
+|------|--------|-----|
+| 2026-06-13 | PRD created (4 root causes defined; current data-update process documented; automated testing added) | josephjang |
+| 2026-06-13 | Phases 1–4 implemented: NameKO/NameJA NULL guard + testable `ResolveLocalizedQuestName`; empty dev-cache now hard-fails refresh; `GetQuestName`/`GetQuestDisplayName` added and all display paths (toast, SyncResultDialog) + 3 duplicate helpers routed through them; `TarkovHelper.Tests` (xUnit) with 13 passing tests incl. data-coverage guard. Verified in app (Korean + trader/level). | josephjang |
+| 2026-06-13 | DB note: the editor's Fetch Wiki Data produced NULL wiki fields (trader/level), so the shipped DB was built via a translate-only patch (apply tarkov.dev KO/JA by normalizedName onto the complete DB) → 288/488 (59%) localized, all wiki metadata preserved. DB + db_version bump isolated on a separate branch (affects all users); code/tests/PRD pushed separately. | josephjang |
+
+## Completion Criteria
+
+- [x] All Goals met
+- [x] `dotnet build TarkovHelper.sln` succeeds
+- [x] `dotnet test TarkovHelper.sln` succeeds (incl. data-coverage test) — 13/13
+- [x] Rebuilt DB NameKO Korean ratio meets the ≥30% guard — 59% (288/488) *(on the DB branch)*
+- [x] In KO, all display paths (incl. toast + SyncResultDialog) show Korean
+- [x] Untranslated quests fall back to English cleanly
+- [x] `db_version.txt` bumped (1.0.10) and release reflected *(DB branch)*
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| API still untranslated for some quests → English remains | Medium | Accepted data limit; NULL guard eases later top-up |
+| Auto cache-refresh changes editor workflow | Medium | Start with warn/block (Option B); auto pre-fetch optional |
+| DB rebuild affects other curated fields (edition/karma) | Medium | Diff before/after; regression-check approved fields |
+| Residual display paths still using `task.Name` | Low | Grep all `task.Name` display usages as a re-check |
+| Test project referencing WPF (net8.0-windows) friction | Low | Keep tested logic WPF-free (LocalizationService logic, DB read) |
+
+---
+
+## Archive Info (fill on completion)
+
+- **Completed**: YYYY-MM-DD
+- **Summary**:
+- **Actual vs Planned**:
+- **Lessons Learned**:
+- **Follow-up Items**:
