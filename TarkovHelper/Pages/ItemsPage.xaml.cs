@@ -1346,15 +1346,7 @@ namespace TarkovHelper.Pages
         }
 
         private string GetLocalizedQuestName(TarkovTask task)
-        {
-            var lang = _loc.CurrentLanguage;
-            return lang switch
-            {
-                AppLanguage.KO => task.NameKo ?? task.Name,
-                AppLanguage.JA => task.NameJa ?? task.Name,
-                _ => task.Name
-            };
-        }
+            => _loc.GetQuestName(task);
 
         private string GetLocalizedModuleName(HideoutModule module)
         {

@@ -150,9 +150,9 @@ public partial class SyncResultDialog : Window
             OriginalGroup = group,
             GroupLabel = _loc.CurrentLanguage switch
             {
-                AppLanguage.KO => $"선택 그룹: {string.Join(" / ", group.Choices.Select(c => c.Task.Name))}",
-                AppLanguage.JA => $"選択グループ: {string.Join(" / ", group.Choices.Select(c => c.Task.Name))}",
-                _ => $"Choose one: {string.Join(" / ", group.Choices.Select(c => c.Task.Name))}"
+                AppLanguage.KO => $"선택 그룹: {string.Join(" / ", group.Choices.Select(c => _loc.GetQuestName(c.Task)))}",
+                AppLanguage.JA => $"選択グループ: {string.Join(" / ", group.Choices.Select(c => _loc.GetQuestName(c.Task)))}",
+                _ => $"Choose one: {string.Join(" / ", group.Choices.Select(c => _loc.GetQuestName(c.Task)))}"
             }
         };
 
@@ -161,7 +161,7 @@ public partial class SyncResultDialog : Window
             var choiceVm = new AlternativeQuestChoiceViewModel
             {
                 GroupName = vm.GroupName,
-                QuestName = choice.Task.Name,
+                QuestName = _loc.GetQuestName(choice.Task),
                 IsCompleted = choice.IsCompleted,
                 IsFailed = choice.IsFailed,
                 IsSelected = choice.IsSelected,

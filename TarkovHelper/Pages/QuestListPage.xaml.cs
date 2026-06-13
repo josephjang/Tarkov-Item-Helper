@@ -363,30 +363,7 @@ namespace TarkovHelper.Pages
         }
 
         private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(TarkovTask task)
-        {
-            var lang = _loc.CurrentLanguage;
-
-            if (lang == AppLanguage.EN)
-            {
-                return (task.Name, string.Empty, false);
-            }
-
-            // For KO/JA, show localized name as main, English as subtitle
-            var localizedName = lang switch
-            {
-                AppLanguage.KO => task.NameKo,
-                AppLanguage.JA => task.NameJa,
-                _ => null
-            };
-
-            if (!string.IsNullOrEmpty(localizedName))
-            {
-                return (localizedName, task.Name, true);
-            }
-
-            // Fallback to English only
-            return (task.Name, string.Empty, false);
-        }
+            => _loc.GetQuestDisplayName(task);
 
         private static string GetTraderInitial(string trader)
         {
