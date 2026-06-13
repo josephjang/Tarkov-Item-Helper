@@ -20,6 +20,7 @@ public class QuestNameMergeTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    public void Missing_or_empty_translation_becomes_null(string? localized)
+    [InlineData("   ")]
+    public void Missing_empty_or_whitespace_translation_becomes_null(string? localized)
         => Assert.Null(TarkovDevDataService.ResolveLocalizedQuestName(localized, "Some Quest"));
 }

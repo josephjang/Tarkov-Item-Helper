@@ -12,15 +12,15 @@ public partial class LocalizationService
 
     /// <summary>
     /// Returns a quest's name in the current language, falling back to the English name when the
-    /// localized name is missing/empty. Single entry point for quest-name display across the app.
+    /// localized name is missing/blank. Single entry point for quest-name display across the app.
     /// </summary>
     public string GetQuestName(TarkovTask task) => GetQuestName(CurrentLanguage, task);
 
     /// <summary>Pure, testable core of <see cref="GetQuestName(TarkovTask)"/>.</summary>
     public static string GetQuestName(AppLanguage lang, TarkovTask task) => lang switch
     {
-        AppLanguage.KO => string.IsNullOrEmpty(task.NameKo) ? task.Name : task.NameKo!,
-        AppLanguage.JA => string.IsNullOrEmpty(task.NameJa) ? task.Name : task.NameJa!,
+        AppLanguage.KO => string.IsNullOrWhiteSpace(task.NameKo) ? task.Name : task.NameKo!,
+        AppLanguage.JA => string.IsNullOrWhiteSpace(task.NameJa) ? task.Name : task.NameJa!,
         _ => task.Name
     };
 
@@ -44,7 +44,7 @@ public partial class LocalizationService
             _ => null
         };
 
-        return string.IsNullOrEmpty(localized)
+        return string.IsNullOrWhiteSpace(localized)
             ? (task.Name, string.Empty, false)
             : (localized!, task.Name, true);
     }
