@@ -459,8 +459,8 @@ namespace TarkovDBEditor.Services
                         TarkovDataId = tarkovDataId,
                         NameEN = name ?? "",
                         NormalizedName = normalizedName,
-                        NameKO = koNames.TryGetValue(id, out var ko) ? ko : name ?? "",
-                        NameJA = jaNames.TryGetValue(id, out var ja) ? ja : name ?? "",
+                        NameKO = ResolveLocalizedQuestName(koNames.TryGetValue(id, out var ko) ? ko : null, name ?? ""),
+                        NameJA = ResolveLocalizedQuestName(jaNames.TryGetValue(id, out var ja) ? ja : null, name ?? ""),
                         Trader = trader,
                         WikiLink = wikiLink
                     };
@@ -479,6 +479,18 @@ namespace TarkovDBEditor.Services
 
             progress?.Invoke($"Fetched {result.Count} quests from tarkov.dev");
             return result;
+        }
+
+        /// <summary>
+        /// 퀘스트의 현지화 이름(KO/JA)을 결정한다.
+        /// 번역이 없거나(누락/공백) 영문과 동일하면 null을 반환해, 미번역 퀘스트가 영문 폴백 대신
+        /// NULL로 저장되도록 한다(Trader/Item 경로와 동일한 규칙).
+        /// </summary>
+        public static string? ResolveLocalizedQuestName(string? localizedName, string englishName)
+        {
+            if (string.IsNullOrEmpty(localizedName))
+                return null;
+            return localizedName == englishName ? null : localizedName;
         }
 
         /// <summary>
@@ -1564,10 +1576,10 @@ namespace TarkovDBEditor.Services
         public string? NormalizedName { get; set; }
 
         [JsonPropertyName("nameKO")]
-        public string NameKO { get; set; } = "";
+        public string? NameKO { get; set; }
 
         [JsonPropertyName("nameJA")]
-        public string NameJA { get; set; } = "";
+        public string? NameJA { get; set; }
 
         [JsonPropertyName("trader")]
         public string? Trader { get; set; }
