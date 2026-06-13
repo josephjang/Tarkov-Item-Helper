@@ -496,13 +496,17 @@ namespace TarkovDBEditor.Services
 
             if (devQuestsCached == null || devQuestsCached.Count == 0)
             {
-                progress?.Invoke("No cached tarkov.dev quests found. Please run 'Debug > Cache Tarkov Dev Data' first.");
-                devQuestsCached = new Dictionary<string, TarkovDevQuestCacheItem>();
+                // Block instead of silently falling back: an empty/missing tarkov.dev cache would
+                // leave every quest NameKO/NameJA as the English name. Force an explicit re-cache.
+                throw new InvalidOperationException(
+                    "tarkov.dev quest cache is empty or missing. Run 'Debug > Cache Tarkov Dev Data' " +
+                    "before refreshing; otherwise quest NameKO/NameJA would be filled with English fallbacks.");
             }
-            else
-            {
-                progress?.Invoke($"Loaded {devQuestsCached.Count} quests from tarkov.dev cache");
-            }
+
+            var questsCachedAt = devService.GetCacheInfo().QuestsCachedAt;
+            progress?.Invoke(
+                $"Loaded {devQuestsCached.Count} quests from tarkov.dev cache" +
+                (questsCachedAt.HasValue ? $" (cached {questsCachedAt:yyyy-MM-dd HH:mm})" : ""));
 
             // 퀘스트 매칭 및 DB 데이터 생성
             var dbQuests = new List<DbQuest>();
@@ -1176,13 +1180,17 @@ namespace TarkovDBEditor.Services
 
             if (devQuestsCached == null || devQuestsCached.Count == 0)
             {
-                progress?.Invoke("No cached tarkov.dev quests found. Please run 'Debug > Cache Tarkov Dev Data' first.");
-                devQuestsCached = new Dictionary<string, TarkovDevQuestCacheItem>();
+                // Block instead of silently falling back: an empty/missing tarkov.dev cache would
+                // leave every quest NameKO/NameJA as the English name. Force an explicit re-cache.
+                throw new InvalidOperationException(
+                    "tarkov.dev quest cache is empty or missing. Run 'Debug > Cache Tarkov Dev Data' " +
+                    "before refreshing; otherwise quest NameKO/NameJA would be filled with English fallbacks.");
             }
-            else
-            {
-                progress?.Invoke($"Loaded {devQuestsCached.Count} quests from tarkov.dev cache");
-            }
+
+            var questsCachedAt = devService.GetCacheInfo().QuestsCachedAt;
+            progress?.Invoke(
+                $"Loaded {devQuestsCached.Count} quests from tarkov.dev cache" +
+                (questsCachedAt.HasValue ? $" (cached {questsCachedAt:yyyy-MM-dd HH:mm})" : ""));
 
             // normalizedName 기반 매핑
             var devQuestsByNormalizedName = devQuestsCached.Values
