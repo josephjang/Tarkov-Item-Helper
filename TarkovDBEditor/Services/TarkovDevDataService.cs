@@ -488,7 +488,7 @@ namespace TarkovDBEditor.Services
         /// </summary>
         public static string? ResolveLocalizedQuestName(string? localizedName, string englishName)
         {
-            if (string.IsNullOrEmpty(localizedName))
+            if (string.IsNullOrWhiteSpace(localizedName))
                 return null;
             return localizedName == englishName ? null : localizedName;
         }

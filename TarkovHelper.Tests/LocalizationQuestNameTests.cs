@@ -19,7 +19,8 @@ public class LocalizationQuestNameTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    public void Ko_falls_back_to_english_when_missing_or_empty(string? ko)
+    [InlineData("   ")]
+    public void Ko_falls_back_to_english_when_missing_empty_or_whitespace(string? ko)
         => Assert.Equal("Debut", LocalizationService.GetQuestName(AppLanguage.KO, Task("Debut", ko: ko)));
 
     [Fact]
