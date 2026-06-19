@@ -354,7 +354,9 @@ namespace TarkovHelper.Pages
                 }
 
                 return true;
-            }).ToList();
+            })
+            .OrderBy(vm => vm.DisplayName, _loc.GetNameComparer())
+            .ToList();
 
             LstModules.ItemsSource = filtered;
         }
