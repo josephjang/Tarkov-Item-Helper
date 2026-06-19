@@ -1,0 +1,121 @@
+# Hideout List — Localized Sort Order PRD
+
+## Overview
+
+- **Status**: In Progress (code + tests + PRD in PR against upstream)
+- **Created**: 2026-06-20
+- **Updated**: 2026-06-20
+- **Owner**: josephjang
+- **Related Agents**: wpf-xaml-specialist, service-architect
+- **Translations**: Korean companion at `feature-hideout-localized-sort.ko.prd` (kept in sync 1:1)
+- **Wording convention**: this English PRD describes orderings in English (Hangul collation, kana/gojuon order) and uses full language names (English / Korean / Japanese) or locale codes (ko-KR / ja-JP). Code identifiers (`AppLanguage.KO`, `NameKO`) are unchanged.
+
+## Problem Statement
+
+In the Hideout page, the module list is ordered **alphabetically by the English `Name`** and never re-sorted for the active UI language. The order is fixed where the data is loaded — `HideoutDbService` reads `... FROM HideoutStations ORDER BY Name` — and `HideoutPage.ApplyFilters()` only filters, never sorts.
+
+Each row's display text *is* already localized (`HideoutPage.GetLocalizedNames()` → `HideoutModuleViewModel.DisplayName`, re-computed on language change via `RefreshModuleDisplayNames()`), but because the underlying order stays English-alphabetical, the Korean and Japanese views show modules in an order that does **not** match Escape from Tarkov's in-game hideout list.
+
+The in-game order is alphabetical by the **localized** name (English alphabetical, Korean Hangul collation, Japanese kana / gojuon order). The app should reproduce that per the active language.
+
+## Goals
+
+- [x] Goal 1: The hideout module list order matches the in-game order in every supported language.
+- [x] Goal 2: The order follows the active UI language and updates immediately when the language changes.
+- [x] Goal 3: Ordering uses culture-aware, case-insensitive collation (ko-KR / ja-JP / en-US), not ordinal/byte order.
+- [x] Goal 4: A unit-test guard locks the comparer behavior (including an ordinal-regression guard).
+
+## Non-Goals (Scope Out)
+
+- Database schema or data changes. The localized names (`NameKO`/`NameJA`) already exist in `HideoutStations`; only in-app ordering changes.
+- Ordering of within-module requirement lists (items/stations/traders/skills) — those keep their own `SortOrder`.
+- A fixed, hand-curated module order. Confirmed with the user that the in-game order is alphabetical by localized name, so a sort is sufficient.
+- Refactoring `GetLocalizedNames()` into a shared `LocalizationService` core (analogous to `GetQuestName`) — optional follow-up, not required here.
+
+## Implementation Plan
+
+### Phase 1: Localized Sort
+
+**Goal**: Order the module list by the localized display name with culture-aware collation.
+
+- [x] Task 1.1: Add a culture-aware name comparer
+  - Agent: service-architect
+  - Files: `TarkovHelper/Services/LocalizationService.Hideout.cs` (new partial)
+  - Notes: Static, pure, testable core `GetNameComparer(AppLanguage)` returning
+    `StringComparer.Create(CultureInfo, ignoreCase: true)` for ko-KR / ja-JP / en-US, plus an instance
+    convenience overload `GetNameComparer()` over `CurrentLanguage`. Mirrors the `GetQuestName` pattern.
+
+- [x] Task 1.2: Sort the hideout list by localized name
+  - Agent: wpf-xaml-specialist
+  - Files: `TarkovHelper/Pages/HideoutPage.xaml.cs` (`ApplyFilters`)
+  - Notes: Append `.OrderBy(vm => vm.DisplayName, _loc.GetNameComparer())` to the existing filter
+    before `ToList()`. No extra wiring: on language change, `OnLanguageChanged` already calls
+    `RefreshModuleDisplayNames()` (updates `DisplayName`) then `ApplyFilters()`, so the new comparer +
+    updated names re-sort for the active language. `ApplyFilters` reassigns `ItemsSource`, so the
+    `ListBox` rebinds immediately. The DB `ORDER BY Name` is left as a harmless deterministic default.
+
+### Phase 2: Guard Test
+
+**Goal**: Lock the comparer behavior automatically.
+
+- [x] Task 2.1: Add `HideoutSortOrderTests`
+  - Files: `TarkovHelper.Tests/HideoutSortOrderTests.cs` (new)
+  - Notes: Tests the pure static `GetNameComparer` (no WPF/DB). English alphabetical; English
+    case-insensitive (the ordinal-regression guard — `Compare("apple","Banana") < 0`); Korean Hangul
+    collation; Japanese kana order. Korean/Japanese sample strings live only inside the test as data.
+
+### Phase 3: Verification & Release
+
+**Goal**: Confirm end-to-end and ship via a PR to upstream.
+
+- [x] Task 3.1: `dotnet test TarkovHelper.sln` green (18 passed, 1 conditional skip).
+- [ ] Task 3.2: Manual check — switch English/Korean/Japanese and confirm the list order matches the in-game hideout list (Japanese collation has the most edge cases; spot-check a few entries).
+- [ ] Task 3.3: Open a PR with base `upstream/main` (Zeliper) per the repo's fork workflow.
+
+## Technical Decisions
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| Sort in-memory in `ApplyFilters`, not in SQL | Order depends on the runtime UI language and must change without reloading the DB | 2026-06-20 |
+| Sort by the existing `DisplayName` | Already localized and refreshed on language change; no new resolution path needed | 2026-06-20 |
+| Culture-aware `StringComparer` (not Ordinal) | Reproduces the in-game alphabetical/Hangul/kana order; ordinal would mis-order mixed case and kana | 2026-06-20 |
+| No DB schema/data change | `NameKO`/`NameJA` already present; problem is purely ordering | 2026-06-20 |
+
+## Dependencies
+
+- [x] `HideoutModule.NameKo`/`NameJa` and `HideoutModuleViewModel.DisplayName` — already present
+- [x] `LocalizationService.CurrentLanguage` + `LanguageChanged` event — already present
+- [x] `TarkovHelper.Tests` project (xUnit) — already present
+
+## Progress Log
+
+| Date | Update | By |
+|------|--------|-----|
+| 2026-06-20 | PRD created; root cause = English-alphabetical load order never re-sorted per language | josephjang |
+| 2026-06-20 | Implemented `GetNameComparer` + `ApplyFilters` sort; added `HideoutSortOrderTests` (4 tests). Full suite green (18 passed / 1 skipped). | josephjang |
+
+## Completion Criteria
+
+- [x] All code Goals met
+- [x] `dotnet build TarkovHelper.sln` succeeds
+- [x] `dotnet test TarkovHelper.sln` succeeds (incl. new guard tests)
+- [ ] Manual English/Korean/Japanese order matches the in-game hideout list
+- [ ] PR opened against upstream
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Japanese kana collation edge cases (dakuten, mixed kanji/kana names) mis-order a module | Low/Medium | Manual spot-check vs the game; culture-aware ja-JP comparer; adjust only if a concrete mismatch is found |
+| A module lacks a localized name and falls back to English, sorting among localized names by its English string | Low | Accepted edge case; most/all modules have translations after the localization work |
+| Future change swaps the comparer to `Ordinal` | Low | `English_comparer_is_case_insensitive_not_ordinal` test fails on regression |
+
+---
+
+## Archive Info (fill on completion)
+
+- **Completed**: YYYY-MM-DD
+- **Summary**:
+- **Actual vs Planned**:
+- **Lessons Learned**:
+- **Follow-up Items**:
