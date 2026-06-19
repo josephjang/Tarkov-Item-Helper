@@ -18,10 +18,23 @@ public partial class LocalizationService
     public StringComparer GetNameComparer() => GetNameComparer(CurrentLanguage);
 
     // Cached, immutable comparers: GetNameComparer runs on every keystroke in HideoutPage.ApplyFilters(),
-    // so create each culture's comparer once instead of per call.
-    private static readonly StringComparer KoNameComparer = StringComparer.Create(new CultureInfo("ko-KR"), ignoreCase: true);
-    private static readonly StringComparer JaNameComparer = StringComparer.Create(new CultureInfo("ja-JP"), ignoreCase: true);
-    private static readonly StringComparer EnNameComparer = StringComparer.Create(new CultureInfo("en-US"), ignoreCase: true);
+    // so create each culture's comparer once instead of per call. Resolve cultures defensively so a host
+    // missing one cannot crash static initialization (TypeInitializationException); fall back to ordinal.
+    private static readonly StringComparer KoNameComparer = CreateNameComparer("ko-KR");
+    private static readonly StringComparer JaNameComparer = CreateNameComparer("ja-JP");
+    private static readonly StringComparer EnNameComparer = CreateNameComparer("en-US");
+
+    private static StringComparer CreateNameComparer(string culture)
+    {
+        try
+        {
+            return StringComparer.Create(CultureInfo.GetCultureInfo(culture), ignoreCase: true);
+        }
+        catch (CultureNotFoundException)
+        {
+            return StringComparer.OrdinalIgnoreCase;
+        }
+    }
 
     /// <summary>Pure, testable core of <see cref="GetNameComparer()"/>.</summary>
     public static StringComparer GetNameComparer(AppLanguage lang) => lang switch
