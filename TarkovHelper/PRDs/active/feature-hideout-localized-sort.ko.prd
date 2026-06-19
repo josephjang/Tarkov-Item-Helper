@@ -1,0 +1,121 @@
+# 은신처 목록 — 현지화 정렬 순서 PRD
+
+## 개요 (Overview)
+
+- **Status**: In Progress (코드 + 테스트 + PRD를 upstream PR에 포함)
+- **Created**: 2026-06-20
+- **Updated**: 2026-06-20
+- **Owner**: josephjang
+- **Related Agents**: wpf-xaml-specialist, service-architect
+- **Translations**: 영문 원본은 `feature-hideout-localized-sort.prd` (1:1 동기화 유지)
+- **표기 규칙**: 영문 PRD는 정렬 순서를 영어로 기술(Hangul collation, kana/gojuon order)하고 한글을 쓰지 않습니다. 본 한글 PRD는 한국어로 작성합니다. 코드 식별자(`AppLanguage.KO`, `NameKO`)는 그대로 둡니다.
+
+## 문제 정의 (Problem Statement)
+
+은신처(Hideout) 페이지에서 모듈 목록은 **영문 `Name` 기준 알파벳순**으로 정렬되어 있고, 현재 UI 언어에 맞게 다시 정렬되지 않습니다. 순서는 데이터를 불러오는 지점에서 고정됩니다 — `HideoutDbService`가 `... FROM HideoutStations ORDER BY Name`으로 읽으며, `HideoutPage.ApplyFilters()`는 필터링만 하고 정렬은 하지 않습니다.
+
+각 행의 표시 텍스트 자체는 이미 현지화되어 있지만(`HideoutPage.GetLocalizedNames()` → `HideoutModuleViewModel.DisplayName`, 언어 변경 시 `RefreshModuleDisplayNames()`로 갱신), 기반 순서가 영문 알파벳순으로 고정되어 있어 한국어/일본어 화면에서는 모듈 순서가 Escape from Tarkov 게임 내 은신처 목록과 **일치하지 않습니다.**
+
+게임 내 순서는 **현지화된** 이름 기준 알파벳순입니다(영어는 영문 알파벳순, 한국어는 한글 사전순, 일본어는 가나/오십음순). 앱도 현재 언어에 맞춰 이 순서를 재현해야 합니다.
+
+## 목표 (Goals)
+
+- [x] Goal 1: 모든 지원 언어에서 은신처 모듈 목록 순서가 게임 내 순서와 일치한다.
+- [x] Goal 2: 순서는 현재 UI 언어를 따르며, 언어 변경 시 즉시 갱신된다.
+- [x] Goal 3: 정렬은 ordinal/바이트 순이 아니라 culture 기반의 대소문자 무시 비교(ko-KR / ja-JP / en-US)를 사용한다.
+- [x] Goal 4: 단위 테스트로 비교기(comparer) 동작을 고정한다(ordinal 회귀 방지 포함).
+
+## 비목표 (Non-Goals)
+
+- DB 스키마/데이터 변경. 현지화 이름(`NameKO`/`NameJA`)은 이미 `HideoutStations`에 존재하며, 앱 내 정렬만 변경한다.
+- 모듈 내부 요구사항 목록(아이템/스테이션/트레이더/스킬)의 순서 — 기존 `SortOrder` 유지.
+- 수작업으로 지정한 고정 순서. 게임 내 순서가 현지화 이름 알파벳순임을 사용자와 확인했으므로 정렬만으로 충분하다.
+- `GetLocalizedNames()`를 공유 `LocalizationService` 코어(`GetQuestName`와 유사)로 리팩터링 — 선택적 후속 작업, 본 작업에 필수 아님.
+
+## 구현 계획 (Implementation Plan)
+
+### Phase 1: 현지화 정렬
+
+**목표**: 모듈 목록을 현지화된 표시 이름 기준으로 culture 기반 정렬한다.
+
+- [x] Task 1.1: culture 기반 이름 비교기 추가
+  - Agent: service-architect
+  - Files: `TarkovHelper/Services/LocalizationService.Hideout.cs` (신규 partial)
+  - Notes: 순수하고 테스트 가능한 정적 코어 `GetNameComparer(AppLanguage)` — ko-KR / ja-JP / en-US에 대해
+    `StringComparer.Create(CultureInfo, ignoreCase: true)` 반환. 그리고 `CurrentLanguage`를 쓰는 인스턴스
+    편의 오버로드 `GetNameComparer()` 추가. `GetQuestName` 패턴을 따른다.
+
+- [x] Task 1.2: 은신처 목록을 현지화 이름으로 정렬
+  - Agent: wpf-xaml-specialist
+  - Files: `TarkovHelper/Pages/HideoutPage.xaml.cs` (`ApplyFilters`)
+  - Notes: 기존 필터 뒤, `ToList()` 앞에 `.OrderBy(vm => vm.DisplayName, _loc.GetNameComparer())` 추가.
+    추가 배선 불필요: 언어 변경 시 `OnLanguageChanged`가 이미 `RefreshModuleDisplayNames()`(DisplayName 갱신)
+    후 `ApplyFilters()`를 호출하므로 새 비교기 + 갱신된 이름으로 현재 언어에 맞게 재정렬된다. `ApplyFilters`는
+    `ItemsSource`를 재할당하므로 `ListBox`가 즉시 다시 바인딩된다. DB의 `ORDER BY Name`은 무해한 기본
+    정렬로 유지.
+
+### Phase 2: 가드 테스트
+
+**목표**: 비교기 동작을 자동으로 고정한다.
+
+- [x] Task 2.1: `HideoutSortOrderTests` 추가
+  - Files: `TarkovHelper.Tests/HideoutSortOrderTests.cs` (신규)
+  - Notes: 순수 정적 `GetNameComparer`를 테스트(WPF/DB 불필요). 영어 알파벳순; 영어 대소문자 무시(ordinal
+    회귀 가드 — `Compare("apple","Banana") < 0`); 한국어 한글 사전순; 일본어 가나순. 한국어/일본어 샘플
+    문자열은 테스트 코드 내부에 데이터로만 존재.
+
+### Phase 3: 검증 및 릴리스
+
+**목표**: 엔드투엔드 확인 후 upstream PR로 배포.
+
+- [x] Task 3.1: `dotnet test TarkovHelper.sln` 통과 (18 통과, 1 조건부 skip).
+- [ ] Task 3.2: 수동 확인 — 영어/한국어/일본어를 전환하여 목록 순서가 게임 내 은신처 목록과 일치하는지 확인(일본어 collation에 엣지 케이스가 가장 많으므로 일부 항목 점검).
+- [ ] Task 3.3: 저장소의 fork 워크플로에 따라 base `upstream/main`(Zeliper)로 PR 생성.
+
+## 기술적 결정 (Technical Decisions)
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| SQL이 아니라 `ApplyFilters`에서 메모리 내 정렬 | 순서가 런타임 UI 언어에 의존하며 DB 재로드 없이 바뀌어야 함 | 2026-06-20 |
+| 기존 `DisplayName` 기준 정렬 | 이미 현지화되어 있고 언어 변경 시 갱신됨; 새 해석 경로 불필요 | 2026-06-20 |
+| culture 기반 `StringComparer` (Ordinal 아님) | 게임 내 알파벳/한글/가나 순서를 재현; ordinal은 대소문자 혼합·가나를 잘못 정렬 | 2026-06-20 |
+| DB 스키마/데이터 무변경 | `NameKO`/`NameJA` 이미 존재; 문제는 순수 정렬 | 2026-06-20 |
+
+## 의존성 (Dependencies)
+
+- [x] `HideoutModule.NameKo`/`NameJa`, `HideoutModuleViewModel.DisplayName` — 기존 존재
+- [x] `LocalizationService.CurrentLanguage` + `LanguageChanged` 이벤트 — 기존 존재
+- [x] `TarkovHelper.Tests` 프로젝트(xUnit) — 기존 존재
+
+## 진행 로그 (Progress Log)
+
+| Date | Update | By |
+|------|--------|-----|
+| 2026-06-20 | PRD 생성; 근본 원인 = 언어별 재정렬 없는 영문 알파벳 로드 순서 | josephjang |
+| 2026-06-20 | `GetNameComparer` + `ApplyFilters` 정렬 구현; `HideoutSortOrderTests`(4건) 추가. 전체 스위트 통과(18 통과 / 1 skip). | josephjang |
+
+## 완료 기준 (Completion Criteria)
+
+- [x] 모든 코드 Goal 달성
+- [x] `dotnet build TarkovHelper.sln` 성공
+- [x] `dotnet test TarkovHelper.sln` 성공(신규 가드 테스트 포함)
+- [ ] 영어/한국어/일본어 순서가 게임 내 은신처 목록과 일치
+- [ ] upstream PR 생성
+
+## 위험 및 대응 (Risks & Mitigations)
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| 일본어 가나 collation 엣지 케이스(탁점, 한자/가나 혼용)로 일부 모듈 오정렬 | Low/Medium | 게임 대비 수동 점검; culture 기반 ja-JP 비교기; 구체적 불일치 발견 시에만 조정 |
+| 현지화 이름이 없는 모듈이 영문으로 폴백되어 현지화 이름들 사이에서 영문 문자열로 정렬됨 | Low | 허용된 엣지 케이스; 현지화 작업 이후 대부분/모든 모듈에 번역 존재 |
+| 향후 비교기를 `Ordinal`로 교체하는 변경 | Low | `English_comparer_is_case_insensitive_not_ordinal` 테스트가 회귀 시 실패 |
+
+---
+
+## Archive Info (완료 시 작성)
+
+- **Completed**: YYYY-MM-DD
+- **Summary**:
+- **Actual vs Planned**:
+- **Lessons Learned**:
+- **Follow-up Items**:
