@@ -33,6 +33,22 @@ dotnet run --project TarkovHelper/TarkovHelper.csproj -- --fetch
 | **TarkovDBEditor** | Database editor tool for managing tarkov_data.db (see `TarkovDBEditor/CLAUDE.md` for details) |
 | **CheckDb** | Utility project (.NET 10) |
 
+## Documentation & PRDs
+
+Design/planning docs are written as PRDs under `docs/PRDs/` at the repo root — this is
+the canonical PRD location for the whole solution (TarkovHelper, TarkovDBEditor, and
+cross-cutting work). It lives at root, a sibling of `TarkovHelper/`, `TarkovDBEditor/`,
+and `TarkovHelper.sln`, rather than nested inside any one project, since PRDs here
+routinely span more than one project. See that folder's `README.md` for the
+active/archive/templates workflow, the EN/KO bilingual PRD convention, and the
+staleness policy for `active/`.
+
+Pure reference/analysis docs (DB schemas, system analyses, log-format notes — anything
+describing how the system currently works rather than planned work) live directly under
+root `docs/` too. `TarkovDBEditor/docs/` is a separate, smaller location for that
+project's own internal implementation notes (wiki-parsing quirks, test case tracking) —
+not repo-wide, so it stays put.
+
 ## Architecture Overview
 
 ### Pattern: Singleton Services with Event-Driven Data Flow

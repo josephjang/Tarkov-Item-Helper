@@ -278,8 +278,13 @@ MapPage
 
 ## Archive Info (완료 시 작성)
 
-- **Completed**: -
-- **Summary**: -
-- **Actual vs Planned**: -
-- **Lessons Learned**: -
-- **Follow-up Items**: -
+- **Completed**: 2025-12-19 (commit `bef1e27`, "feat(map): implement Map Markers overlay
+  system" — same day the PRD was written), archived 2026-07 (bookkeeping only)
+- **Summary**: Fully implemented as planned: `MarkerType` enum extended
+  (`CultistSpawn`/`SniperScavSpawn`/`RogueSpawn`), and
+  `Pages/Map/Components/MapMarkersManager.cs` was created matching this PRD's Phase 2
+  design almost exactly. The PRD's checkboxes were simply never updated to reflect it.
+- **Actual vs Planned**: Matches plan.
+- **Lessons Learned**: Same as `fix-map-quest-objectives.prd` — implemented-but-never-
+  closed-out PRDs are why the staleness rule was added to `docs/PRDs/README.md`.
+- **Follow-up Items**: None known.

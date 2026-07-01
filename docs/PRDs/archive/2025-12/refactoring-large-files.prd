@@ -607,11 +607,23 @@ Services/
 
 ## Archive Info (완료 시 작성)
 
-- **Completed**: TBD
-- **Summary**: TBD
-- **Actual vs Planned**: TBD
-- **Lessons Learned**: TBD
+- **Completed**: Never — archived 2026-07 as superseded/stale, not completed. Phases 1-4
+  finished 2025-12-18; Phase 5 (Goal 7: ItemsPage, QuestProgressService, CollectorPage)
+  stalled partway through and was never picked back up.
+- **Summary**: MapPage, MainWindow, SettingsService, and LocalizationService were
+  successfully split apart (Phases 1-3, Goal 6). QuestListPage and ItemsPage got partial
+  ViewModel extraction; CollectorPage got partial extraction; QuestProgressService was
+  never touched (Task 5.3, still ~1500 lines).
+- **Actual vs Planned**: As of this archiving (2026-07), `QuestProgressService.cs` (1532
+  lines) and `ItemsPage.xaml.cs` (1644 lines) have grown *larger* than when this PRD was
+  written, and `CollectorPage.xaml.cs` is unchanged at 1031 lines — none are under the
+  <1000-line target. Work moved on to other priorities rather than reaching completion.
+- **Lessons Learned**: Sitting in `active/` for 6+ months after work stopped is why the
+  staleness rule was added to `docs/PRDs/README.md`. If this work resumes, start a fresh
+  PRD scoped to just the remaining files rather than reviving this one wholesale.
 - **Follow-up Items**:
   - Consider automated testing framework after refactoring
   - Consider MVVM pattern for new components
   - Consider dependency injection container
+  - Remaining large files, if revisited: `QuestProgressService.cs`, `ItemsPage.xaml.cs`,
+    `CollectorPage.xaml.cs`
