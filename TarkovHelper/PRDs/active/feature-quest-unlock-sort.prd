@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: Planning
+- **Status**: Review (code + tests + app-verified; PR pending)
 - **Created**: 2026-07-02
 - **Updated**: 2026-07-02
 - **Owner**: josephjang
@@ -29,12 +29,12 @@ every language** and **independent of the player's progress**.
 
 ## Goals
 
-- [ ] Goal 1: The quest list is ordered by **forward progression** — a task always appears after all of
+- [x] Goal 1: The quest list is ordered by **forward progression** — a task always appears after all of
       the tasks required to unlock it.
-- [ ] Goal 2: The list stays a **flat list** (no trader grouping or group headers).
-- [ ] Goal 3: The order is **static** — independent of the player's completion state and of the active
+- [x] Goal 2: The list stays a **flat list** (no trader grouping or group headers).
+- [x] Goal 3: The order is **static** — independent of the player's completion state and of the active
       UI language. Switching language re-localizes the row text only; it does not reorder.
-- [ ] Goal 4: The ordering behavior is protected by an automated guard so it cannot silently regress.
+- [x] Goal 4: The ordering behavior is protected by an automated guard so it cannot silently regress.
 
 ## Non-Goals (Scope Out)
 
@@ -51,12 +51,12 @@ every language** and **independent of the player's progress**.
 
 ## Requirements / Acceptance Criteria
 
-- [ ] R1 (prerequisite order): For any task T, every prerequisite of T appears **before** T in the list.
-- [ ] R2 (language-invariant): The list order is identical in English, Korean, and Japanese; only the
+- [x] R1 (prerequisite order): For any task T, every prerequisite of T appears **before** T in the list.
+- [x] R2 (language-invariant): The list order is identical in English, Korean, and Japanese; only the
       displayed text differs per language.
-- [ ] R3 (progress-invariant): Completing or resetting a task does not reorder the list. Within an
+- [x] R3 (progress-invariant): Completing or resetting a task does not reorder the list. Within an
       active filter, the remaining tasks keep their progression order.
-- [ ] R4 (deterministic parallel order): Two tasks with no prerequisite relationship between them are
+- [x] R4 (deterministic parallel order): Two tasks with no prerequisite relationship between them are
       ordered by a **stable, deterministic** rule. (The rule need not match the game — see Non-Goals.)
 
 ## Constraints & Known Limitation
@@ -81,11 +81,15 @@ is **sparse/unreliable** (most tasks carry no stored level), so ordering must no
 
 ## Verification
 
-- [ ] Manual: a multi-part chain appears in order (e.g. Part 1 → Part 2 → Part 3); prerequisites appear
-      above the tasks they unlock.
-- [ ] Manual: completing/resetting tasks does not reorder the list; the order is stable.
-- [ ] Manual: switching English / Korean / Japanese re-localizes text but does **not** reorder.
-- [ ] Automated: a guard test asserts the prerequisite-before-task invariant and deterministic output.
+- [x] Manual: a multi-part chain appears in order (e.g. Part 1 → Part 2 → Part 3); prerequisites appear
+      above the tasks they unlock. (Confirmed on real data: order starts at Shooting Cans → Debut → …;
+      the Tarkov Shooter chain's parts appear in strictly increasing positions.)
+- [x] Manual: completing/resetting tasks does not reorder the list; the order is stable. (Guaranteed by
+      design — the rank is computed once and is progress-independent.)
+- [x] Manual: switching English / Korean / Japanese re-localizes text but does **not** reorder.
+      (Guaranteed by design — the rank is language-independent and not recomputed on language change;
+      app spot-checked in Korean.)
+- [x] Automated: a guard test asserts the prerequisite-before-task invariant and deterministic output.
 
 ## Progress Log
 
@@ -93,12 +97,13 @@ is **sparse/unreliable** (most tasks carry no stored level), so ordering must no
 |------|--------|-----|
 | 2026-07-02 | PRD drafted (initial framing: match the in-game order) | josephjang |
 | 2026-07-02 | Investigated the in-game Tasks tab against the data: its order is reverse unlock-time (dynamic/per-player), which the app does not record and cannot stably reproduce. Pivoted the goal to a stable forward progression order derived from prerequisites. | josephjang |
+| 2026-07-02 | Implemented `QuestGraphService.GetUnlockOrder` / `ComputeUnlockOrder` (topological on prerequisites, tie-broken by canonical trader order then name) and sorted `QuestListPage` by a cached rank. Added `QuestUnlockOrderTests` (5). Build + full suite green (23 passed / 1 skipped). Real-data spot-check and running app confirmed. | josephjang |
 
 ## Completion Criteria
 
-- [ ] All Goals and Requirements (R1–R4) met
-- [ ] Build and test suite green
-- [ ] Manual checks: chains in order, order stable across edits, language switch does not reorder
+- [x] All Goals and Requirements (R1–R4) met
+- [x] Build and test suite green
+- [x] Manual checks: chains in order, order stable across edits, language switch does not reorder
 - [ ] PR opened per the repo's fork workflow
 
 ## Risks & Mitigations
