@@ -1,0 +1,120 @@
+# Quest List — Progression (Unlock) Sort Order PRD
+
+## Overview
+
+- **Status**: Planning
+- **Created**: 2026-07-02
+- **Updated**: 2026-07-02
+- **Owner**: josephjang
+- **Translations**: Korean companion at `feature-quest-unlock-sort.ko.prd` (kept in sync 1:1)
+- **Wording convention**: this English PRD describes orderings in English and uses full language
+  names (English / Korean / Japanese). This PRD is **implementation-independent** — it states the
+  required behavior, not how it is coded.
+
+## Problem Statement
+
+In the Quest page, the task list is ordered alphabetically by the English task name and is never
+re-ordered. Alphabetical order conveys no sense of progression — a player cannot see which tasks come
+first or what unlocks what — and in Korean/Japanese it is doubly unhelpful because the order still
+follows the English names.
+
+An investigation of the in-game **Tasks tab** showed its order is **reverse unlock-time** (the most
+recently unlocked task appears on top) — a dynamic, per-player order. The app **cannot and should not**
+reproduce it (see Non-Goals): it records no unlock timestamp, and a time-based order would reshuffle on
+every manual edit.
+
+Instead the app should present a **stable forward progression order**: each task appears after the
+tasks required to unlock it. Because this is driven by prerequisite relationships, it is **identical in
+every language** and **independent of the player's progress**.
+
+## Goals
+
+- [ ] Goal 1: The quest list is ordered by **forward progression** — a task always appears after all of
+      the tasks required to unlock it.
+- [ ] Goal 2: The list stays a **flat list** (no trader grouping or group headers).
+- [ ] Goal 3: The order is **static** — independent of the player's completion state and of the active
+      UI language. Switching language re-localizes the row text only; it does not reorder.
+- [ ] Goal 4: The ordering behavior is protected by an automated guard so it cannot silently regress.
+
+## Non-Goals (Scope Out)
+
+- **Reproducing the in-game Tasks-tab order.** That order is reverse unlock-time — dynamic and
+  per-player. The app stores no unlock/activation timestamp (quest progress records only status and a
+  last-edited time, and not-yet-done tasks are computed, not stored), and a time-based order would churn
+  on every manual edit. Fidelity to the game's exact order is therefore explicitly out of scope.
+- Recording unlock/activation timestamps.
+- Trader grouping or group headers.
+- Database schema or data changes.
+- User-selectable sort criteria (e.g. sort by trader / status / progress like the in-game columns).
+  Deferred to a future iteration.
+- Alphabetical-by-localized-name ordering (that was the hideout solution; it does not apply here).
+
+## Requirements / Acceptance Criteria
+
+- [ ] R1 (prerequisite order): For any task T, every prerequisite of T appears **before** T in the list.
+- [ ] R2 (language-invariant): The list order is identical in English, Korean, and Japanese; only the
+      displayed text differs per language.
+- [ ] R3 (progress-invariant): Completing or resetting a task does not reorder the list. Within an
+      active filter, the remaining tasks keep their progression order.
+- [ ] R4 (deterministic parallel order): Two tasks with no prerequisite relationship between them are
+      ordered by a **stable, deterministic** rule. (The rule need not match the game — see Non-Goals.)
+
+## Constraints & Known Limitation
+
+The game's Tasks-tab order (reverse unlock-time) is dynamic and per-player and is **not reproducible**
+from the app's data — there is no unlock timestamp, and a time-based order would be unstable under
+manual editing. Matching the game's exact order is therefore out of scope; the target is a **stable,
+useful progression order** derived from prerequisite relationships.
+
+Prerequisite relationships are the source of truth for ordering. Level-requirement data in the dataset
+is **sparse/unreliable** (most tasks carry no stored level), so ordering must not depend on it.
+
+## Design Decisions (requirements-level)
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| Forward progression order (not reversed) | "Do this, then this" is more useful for a planning tool; a reversed order would show later parts (e.g. Part 3) above earlier ones (Part 1) | 2026-07-02 |
+| Do not reproduce the in-game order | It is reverse unlock-time — dynamic, per-player, not recorded, and would churn on manual edits | 2026-07-02 |
+| Static, language-independent order | Prerequisite-driven order is stable across progress and language | 2026-07-02 |
+| Flat list, not trader-grouped | Keeps the current list UI; grouping is out of scope | 2026-07-02 |
+| Ordering does not use level requirements | Level data in the dataset is sparse/unreliable | 2026-07-02 |
+
+## Verification
+
+- [ ] Manual: a multi-part chain appears in order (e.g. Part 1 → Part 2 → Part 3); prerequisites appear
+      above the tasks they unlock.
+- [ ] Manual: completing/resetting tasks does not reorder the list; the order is stable.
+- [ ] Manual: switching English / Korean / Japanese re-localizes text but does **not** reorder.
+- [ ] Automated: a guard test asserts the prerequisite-before-task invariant and deterministic output.
+
+## Progress Log
+
+| Date | Update | By |
+|------|--------|-----|
+| 2026-07-02 | PRD drafted (initial framing: match the in-game order) | josephjang |
+| 2026-07-02 | Investigated the in-game Tasks tab against the data: its order is reverse unlock-time (dynamic/per-player), which the app does not record and cannot stably reproduce. Pivoted the goal to a stable forward progression order derived from prerequisites. | josephjang |
+
+## Completion Criteria
+
+- [ ] All Goals and Requirements (R1–R4) met
+- [ ] Build and test suite green
+- [ ] Manual checks: chains in order, order stable across edits, language switch does not reorder
+- [ ] PR opened per the repo's fork workflow
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Users expect the exact in-game (reverse unlock-time) order and notice the difference | Low/Medium | Documented decision; the progression order is stable and arguably more useful for planning |
+| Prerequisite data gaps make a chain look flat | Low | Deterministic tiebreak keeps it sensible; data maintained via the DB pipeline |
+| A quest cannot be ranked (missing identifier) | Low | Deterministic fallback places it last; order stays stable |
+
+---
+
+## Archive Info (fill on completion)
+
+- **Completed**: YYYY-MM-DD
+- **Summary**:
+- **Actual vs Planned**:
+- **Lessons Learned**:
+- **Follow-up Items**:
