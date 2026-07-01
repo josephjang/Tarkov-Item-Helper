@@ -332,8 +332,13 @@ var (screenX, screenY) = config.GameToScreen(location.X, location.Y);
 
 ## Archive Info (완료 시 작성)
 
-- **Completed**:
-- **Summary**:
-- **Actual vs Planned**:
-- **Lessons Learned**:
-- **Follow-up Items**:
+- **Completed**: 2025-12-17 (code), archived 2026-07 (bookkeeping — file sat in `active/`
+  for 6+ months after the work was actually done)
+- **Summary**: All 3 goals implemented and build-verified same day. Only the manual
+  Ground Zero verification checkbox was never checked off; no related bug reports since,
+  so treated as done.
+- **Actual vs Planned**: Matches plan — ID-based lookup, coordinate fix, and map-name
+  alias resolution all landed as designed.
+- **Lessons Learned**: PRD was left in `active/` after completion because no one moved
+  it to `archive/` — see the staleness rule added to `docs/PRDs/README.md`.
+- **Follow-up Items**: None known.

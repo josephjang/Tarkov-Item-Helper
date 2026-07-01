@@ -1,5 +1,11 @@
 # PRD: Quest Data Parser - Item Requirements & Quest Prerequisites
 
+> **Archive note (2026-07)**: this is the repo's very first PRD (2025-12-02, predates
+> even the `active`/`archive` folder convention — found loose at the repo root during a
+> docs cleanup). Describes the original wiki-file-to-`tasks.json` parsing pipeline;
+> superseded by the current tarkov.dev API + SQLite DB pipeline (`TarkovDBEditor` /
+> `tarkov_data.db`). Archived as historical record, not an open plan.
+
 ## Overview
 
 This document describes the feature to parse `.wiki` files and extract:
