@@ -17,6 +17,9 @@ namespace TarkovHelper.Pages
         private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
         private readonly ItemInventoryService _inventoryService = ItemInventoryService.Instance;
         private List<QuestViewModel> _allQuestViewModels = new();
+        // Forward progression (unlock) rank per quest NormalizedName; computed once per data load.
+        // Language- and progress-independent, so it is not recomputed on language change.
+        private Dictionary<string, int> _unlockRank = new(StringComparer.OrdinalIgnoreCase);
         private List<string> _traders = new();
         private List<string> _maps = new();
         private Dictionary<string, TarkovItem>? _itemLookup;
@@ -339,6 +342,31 @@ namespace TarkovHelper.Pages
             _allQuestViewModels = tasks.Select(t => CreateQuestViewModel(t)).ToList();
             _traders = tasks.Select(t => t.Trader).Where(t => !string.IsNullOrEmpty(t)).Distinct().OrderBy(t => t).ToList();
             _maps = tasks.Where(t => t.Maps != null).SelectMany(t => t.Maps!).Distinct().OrderBy(m => m).ToList();
+            BuildUnlockRank();
+        }
+
+        /// <summary>
+        /// Compute the forward progression (unlock) rank for each quest once per data load.
+        /// The list is then ordered by this rank in <see cref="ApplyFilters"/>.
+        /// </summary>
+        private void BuildUnlockRank()
+        {
+            var rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var order = QuestGraphService.Instance.GetUnlockOrder();
+                for (int i = 0; i < order.Count; i++)
+                {
+                    var key = order[i].NormalizedName;
+                    if (!string.IsNullOrEmpty(key) && !rank.ContainsKey(key))
+                        rank[key] = i;
+                }
+            }
+            catch
+            {
+                // QuestGraphService not initialized yet — fall back to no ranking (stable input order).
+            }
+            _unlockRank = rank;
         }
 
         private QuestViewModel CreateQuestViewModel(TarkovTask task)
@@ -582,7 +610,11 @@ namespace TarkovHelper.Pages
                 }
 
                 return true;
-            }).ToList();
+            })
+            // Order by forward progression (unlock) rank so prerequisites appear before the
+            // quests they unlock. Rank is language- and progress-independent (see BuildUnlockRank).
+            .OrderBy(vm => _unlockRank.TryGetValue(vm.Task.NormalizedName ?? string.Empty, out var r) ? r : int.MaxValue)
+            .ToList();
 
             LstQuests.ItemsSource = filtered;
 

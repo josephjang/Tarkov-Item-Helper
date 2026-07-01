@@ -444,6 +444,84 @@ namespace TarkovHelper.Services
             return result.Where(t => allRequired.Contains(t.NormalizedName ?? "")).ToList();
         }
 
+        #region Unlock (Progression) Order
+
+        /// <summary>
+        /// Canonical EFT trader order, used only as a deterministic tie-break for
+        /// quests that have no prerequisite relationship. Unknown/event traders sort last.
+        /// </summary>
+        private static readonly string[] TraderOrder =
+        {
+            "Prapor", "Therapist", "Skier", "Peacekeeper", "Mechanic",
+            "Ragman", "Jaeger", "Fence", "Lightkeeper", "Ref"
+        };
+
+        private static int TraderRank(string? trader)
+        {
+            if (string.IsNullOrEmpty(trader)) return int.MaxValue;
+            var idx = Array.FindIndex(TraderOrder, t => string.Equals(t, trader, StringComparison.OrdinalIgnoreCase));
+            return idx < 0 ? int.MaxValue : idx;
+        }
+
+        /// <summary>
+        /// Returns all quests in a stable forward progression (unlock) order: a quest always
+        /// appears after every quest required to unlock it. Language- and progress-independent.
+        /// </summary>
+        public List<TarkovTask> GetUnlockOrder()
+        {
+            EnsureInitialized();
+            return ComputeUnlockOrder(_tasks!);
+        }
+
+        /// <summary>
+        /// Pure, testable core of <see cref="GetUnlockOrder"/>. Topologically sorts by
+        /// <see cref="TarkovTask.Previous"/> (prerequisites first). Seeds are visited in a
+        /// deterministic order — canonical trader order, then English name — which decides only
+        /// how prerequisite-independent quests interleave. Cycles are broken safely.
+        /// </summary>
+        public static List<TarkovTask> ComputeUnlockOrder(IReadOnlyList<TarkovTask> tasks)
+        {
+            var lookup = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in tasks)
+            {
+                if (!string.IsNullOrEmpty(t.NormalizedName))
+                    lookup[t.NormalizedName!] = t;
+            }
+
+            var result = new List<TarkovTask>();
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var tempMark = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Visit(string name)
+            {
+                if (visited.Contains(name)) return;
+                if (!lookup.TryGetValue(name, out var task)) return; // prereq outside the set
+                if (!tempMark.Add(name)) return; // cycle guard
+
+                if (task.Previous != null)
+                {
+                    foreach (var prev in task.Previous)
+                        Visit(prev);
+                }
+
+                tempMark.Remove(name);
+                visited.Add(name);
+                result.Add(task);
+            }
+
+            var seeds = tasks
+                .Where(t => !string.IsNullOrEmpty(t.NormalizedName))
+                .OrderBy(t => TraderRank(t.Trader))
+                .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var t in seeds)
+                Visit(t.NormalizedName!);
+
+            return result;
+        }
+
+        #endregion
+
         private void EnsureInitialized()
         {
             if (_tasks == null || _taskLookup == null)
