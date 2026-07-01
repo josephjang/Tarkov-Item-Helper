@@ -494,6 +494,7 @@ namespace TarkovHelper.Services
 
             void Visit(string name)
             {
+                if (string.IsNullOrEmpty(name)) return;
                 if (visited.Contains(name)) return;
                 if (!lookup.TryGetValue(name, out var task)) return; // prereq outside the set
                 if (!tempMark.Add(name)) return; // cycle guard
