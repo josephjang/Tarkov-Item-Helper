@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -43,6 +45,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        RestoreWindowBounds();
         _loc.LanguageChanged += OnLanguageChanged;
         _settingsService.PlayerLevelChanged += OnPlayerLevelChanged;
         _settingsService.ScavRepChanged += OnScavRepChanged;
@@ -55,8 +58,20 @@ public partial class MainWindow : Window
         ProfileService.Instance.ActiveProfileChanged += (_, args) =>
             Dispatcher.Invoke(() => UpdateGameModeUI(args.GameMode, args.IsAutoDetected));
 
-        // Apply dark title bar
-        SourceInitialized += (s, e) => EnableDarkTitleBar();
+        SourceInitialized += OnSourceInitialized;
+        Closing += OnWindowClosing;
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        EnableDarkTitleBar();
+
+        // Applied here (not in the constructor) so Windows maximizes onto the
+        // monitor containing the restored bounds, not the primary monitor
+        if (_restoreMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
     }
 
     private void EnableDarkTitleBar()
@@ -2146,6 +2161,104 @@ public partial class MainWindow : Window
         {
             _log.Info($"User initiated update to version {updateInfo.Version}");
             UpdateService.Instance.StartUpdate();
+        }
+    }
+
+    #endregion
+
+    #region Window Bounds Persistence
+
+    private const string WindowBoundsKey = "app.mainWindowBounds";
+    private bool _restoreMaximized;
+
+    private sealed class WindowBoundsSetting
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public bool IsMaximized { get; set; }
+    }
+
+    /// <summary>
+    /// Restore the window bounds saved at last close. Called from the constructor,
+    /// after InitializeComponent(), before the window is shown. On first run or
+    /// invalid saved bounds, the XAML defaults (CenterScreen) stay in effect.
+    /// </summary>
+    private void RestoreWindowBounds()
+    {
+        try
+        {
+            var json = _settingsService.GetValue(WindowBoundsKey);
+            if (string.IsNullOrEmpty(json)) return;
+
+            var bounds = JsonSerializer.Deserialize<WindowBoundsSetting>(json);
+            if (bounds == null) return;
+
+            bounds.Width = Math.Clamp(bounds.Width, MinWidth, Math.Max(MinWidth, SystemParameters.VirtualScreenWidth));
+            bounds.Height = Math.Clamp(bounds.Height, MinHeight, Math.Max(MinHeight, SystemParameters.VirtualScreenHeight));
+
+            if (!IsPositionVisible(bounds)) return;
+
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = bounds.Left;
+            Top = bounds.Top;
+            Width = bounds.Width;
+            Height = bounds.Height;
+            _restoreMaximized = bounds.IsMaximized; // applied in OnSourceInitialized
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Failed to restore window bounds: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Guards against saved bounds on an unplugged/rearranged monitor: a usable
+    /// slice of the title-bar strip must intersect the virtual screen.
+    /// </summary>
+    private static bool IsPositionVisible(WindowBoundsSetting bounds)
+    {
+        if (double.IsNaN(bounds.Left) || double.IsNaN(bounds.Top) ||
+            double.IsInfinity(bounds.Left) || double.IsInfinity(bounds.Top))
+        {
+            return false;
+        }
+
+        var virtualScreen = new Rect(
+            SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        var titleStrip = new Rect(bounds.Left, bounds.Top, bounds.Width, 40);
+        titleStrip.Intersect(virtualScreen);
+        return titleStrip != Rect.Empty && titleStrip.Width >= 100 && titleStrip.Height >= 20;
+    }
+
+    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        try
+        {
+            // Normal → live bounds; Maximized/Minimized (incl. F11 fullscreen) →
+            // RestoreBounds, the last normal bounds, so un-maximizing next session
+            // restores sane geometry. A minimized close is saved as Normal.
+            var isMaximized = WindowState == WindowState.Maximized;
+            var bounds = WindowState == WindowState.Normal
+                ? new Rect(Left, Top, ActualWidth, ActualHeight)
+                : RestoreBounds;
+
+            if (bounds == Rect.Empty || bounds.Width <= 0 || bounds.Height <= 0) return;
+
+            _settingsService.SetValue(WindowBoundsKey, JsonSerializer.Serialize(new WindowBoundsSetting
+            {
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Width = bounds.Width,
+                Height = bounds.Height,
+                IsMaximized = isMaximized
+            }));
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Failed to save window bounds: {ex.Message}");
         }
     }
 
