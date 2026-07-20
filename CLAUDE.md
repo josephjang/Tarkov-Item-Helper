@@ -93,7 +93,10 @@ Databases (SQLite)
 
 **user_data.db** (User persistence):
 - Quest/hideout progress, item inventory, settings
-- Located: `%LocalAppData%/TarkovHelper/Config/user_data.db`
+- Located: `{AppDir}/Config/user_data.db` (next to the executable, e.g.
+  `TarkovHelper/bin/Debug/net8.0-windows/Config/` for a Debug build — not `%LocalAppData%`)
+- Location overridable via the `TARKOVHELPER_CONFIG_PATH` environment variable
+  (used by e2e tests to isolate their data)
 
 ### UI Structure
 

@@ -107,8 +107,9 @@ Logs written to `{AppDir}/Logs/<date>-<n>/` (next to the executable, e.g. `bin/D
 
 - `AppEnv.DataPath` - `{AppDir}/Data/` - Cache data
 - `AppEnv.CachePath` - `{AppDir}/Cache/` - Wiki pages, images
-- `AppEnv.ConfigPath` - `{AppDir}/Config/` - Legacy config location
-- User data now stored in `%LocalAppData%/TarkovHelper/Config/user_data.db`
+- `AppEnv.ConfigPath` - `{AppDir}/Config/` - User data (`user_data.db`); overridable via the
+  `TARKOVHELPER_CONFIG_PATH` environment variable (used by e2e tests to isolate their data).
+  Note `%LocalAppData%/TarkovHelper/` holds only a few auxiliary log files, not user data.
 
 ### Cross-Tab Navigation
 
