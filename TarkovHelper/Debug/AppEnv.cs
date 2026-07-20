@@ -17,6 +17,14 @@ namespace TarkovHelper.Debug
 
         public static string DataPath { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"Data");
         public static string CachePath { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Cache");
-        public static string ConfigPath { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config");
+
+        /// <summary>
+        /// User-data location (user_data.db etc.). Overridable via the
+        /// TARKOVHELPER_CONFIG_PATH environment variable so e2e tests can point the
+        /// app at a throwaway folder instead of the real Config next to the exe.
+        /// </summary>
+        public static string ConfigPath { get; set; } =
+            Environment.GetEnvironmentVariable("TARKOVHELPER_CONFIG_PATH")
+            ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config");
     }
 }
