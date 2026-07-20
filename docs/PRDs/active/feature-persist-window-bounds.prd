@@ -74,11 +74,14 @@ window should too.
 |------|--------|-----|
 | 2026-07-20 | PRD created; design decided (single JSON settings key, constructor-time restore, save on close) | josephjang |
 | 2026-07-20 | Implemented in `MainWindow.xaml.cs` (restore in ctor, maximize at SourceInitialized, save on Closing). Build green. Verified by driving the running app (launched via `dotnet TarkovHelper.dll` to skip the admin manifest, window moved/maximized/minimized via Win32, DB inspected between runs): first-run defaults, normal round-trip, maximized round-trip incl. RestoreBounds, minimized close → normal, off-screen DB value → centered defaults, corrupt JSON → warning logged + defaults + self-heals on next close. Pending: physical multi-monitor check, F11-fullscreen close. | josephjang |
+| 2026-07-20 | Extracted the pure core into `Services/WindowBoundsPersistence.cs` (same behavior; MainWindow now only wires Window/SystemParameters/storage) and added `WindowBoundsPersistenceTests` (11) guarding round-trips, RestoreBounds-on-maximized/minimized, off-screen/secondary-monitor validation, clamping, and the JSON contract. Suite 34 passed / 1 skipped. Post-refactor smoke round-trip re-verified on the running app. | josephjang |
 
 ## Completion Criteria
 
 - [ ] All Goals and Requirements (R1–R5) met *(R3 physical multi-monitor + R4 fullscreen pending)*
 - [x] Build green (`dotnet build`)
+- [x] Automated guard: `WindowBoundsPersistenceTests` protect the save/restore/validation rules
+      (incl. a simulated secondary-monitor case) against silent regressions
 - [x] Manual checks: first-run defaults; normal/maximized/minimized round-trips;
       off-screen and corrupt-value fallbacks (by editing `user_data.db`); dark title bar
       still applied (seen in screenshots); overlay minimap persistence untouched

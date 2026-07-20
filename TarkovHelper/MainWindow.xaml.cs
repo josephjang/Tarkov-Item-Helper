@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -2171,15 +2170,6 @@ public partial class MainWindow : Window
     private const string WindowBoundsKey = "app.mainWindowBounds";
     private bool _restoreMaximized;
 
-    private sealed class WindowBoundsSetting
-    {
-        public double Left { get; set; }
-        public double Top { get; set; }
-        public double Width { get; set; }
-        public double Height { get; set; }
-        public bool IsMaximized { get; set; }
-    }
-
     /// <summary>
     /// Restore the window bounds saved at last close. Called from the constructor,
     /// after InitializeComponent(), before the window is shown. On first run or
@@ -2189,16 +2179,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            var json = _settingsService.GetValue(WindowBoundsKey);
-            if (string.IsNullOrEmpty(json)) return;
-
-            var bounds = JsonSerializer.Deserialize<WindowBoundsSetting>(json);
+            var virtualScreen = new Rect(
+                SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            var bounds = WindowBoundsPersistence.ParseAndValidate(
+                _settingsService.GetValue(WindowBoundsKey), MinWidth, MinHeight, virtualScreen);
             if (bounds == null) return;
-
-            bounds.Width = Math.Clamp(bounds.Width, MinWidth, Math.Max(MinWidth, SystemParameters.VirtualScreenWidth));
-            bounds.Height = Math.Clamp(bounds.Height, MinHeight, Math.Max(MinHeight, SystemParameters.VirtualScreenHeight));
-
-            if (!IsPositionVisible(bounds)) return;
 
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = bounds.Left;
@@ -2213,48 +2199,15 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Guards against saved bounds on an unplugged/rearranged monitor: a usable
-    /// slice of the title-bar strip must intersect the virtual screen.
-    /// </summary>
-    private static bool IsPositionVisible(WindowBoundsSetting bounds)
-    {
-        if (double.IsNaN(bounds.Left) || double.IsNaN(bounds.Top) ||
-            double.IsInfinity(bounds.Left) || double.IsInfinity(bounds.Top))
-        {
-            return false;
-        }
-
-        var virtualScreen = new Rect(
-            SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
-            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-        var titleStrip = new Rect(bounds.Left, bounds.Top, bounds.Width, 40);
-        titleStrip.Intersect(virtualScreen);
-        return titleStrip != Rect.Empty && titleStrip.Width >= 100 && titleStrip.Height >= 20;
-    }
-
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
         try
         {
-            // Normal → live bounds; Maximized/Minimized (incl. F11 fullscreen) →
-            // RestoreBounds, the last normal bounds, so un-maximizing next session
-            // restores sane geometry. A minimized close is saved as Normal.
-            var isMaximized = WindowState == WindowState.Maximized;
-            var bounds = WindowState == WindowState.Normal
-                ? new Rect(Left, Top, ActualWidth, ActualHeight)
-                : RestoreBounds;
+            var json = WindowBoundsPersistence.CreateSaveValue(
+                WindowState, new Rect(Left, Top, ActualWidth, ActualHeight), RestoreBounds);
+            if (json == null) return; // unusable geometry: keep the previously saved value
 
-            if (bounds == Rect.Empty || bounds.Width <= 0 || bounds.Height <= 0) return;
-
-            _settingsService.SetValue(WindowBoundsKey, JsonSerializer.Serialize(new WindowBoundsSetting
-            {
-                Left = bounds.Left,
-                Top = bounds.Top,
-                Width = bounds.Width,
-                Height = bounds.Height,
-                IsMaximized = isMaximized
-            }));
+            _settingsService.SetValue(WindowBoundsKey, json);
         }
         catch (Exception ex)
         {
