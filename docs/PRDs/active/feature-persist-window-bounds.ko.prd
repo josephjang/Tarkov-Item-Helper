@@ -1,0 +1,98 @@
+# 메인 윈도우 — 실행 간 크기/위치 유지 PRD
+
+## Overview
+
+- **Status**: Review (구현 + 실행 앱 구동 검증 완료; PR 대기)
+- **Created**: 2026-07-20
+- **Updated**: 2026-07-20
+- **Owner**: josephjang
+- **Translations**: 영문 원본 `feature-persist-window-bounds.prd` (1:1 동기화 유지, 충돌 시 영문 기준)
+
+## Problem Statement
+
+앱을 실행할 때마다 메인 윈도우가 기본값(1400×800, 주 모니터 중앙)으로 열립니다. 다른 크기나
+위치, 혹은 최대화 상태를 선호하는 사용자는 매번 실행 후 창을 다시 조정해야 합니다. 오버레이
+미니맵은 이미 세션 간에 자신의 위치/크기를 기억하므로, 메인 윈도우도 같아야 합니다.
+
+## Goals
+
+- [x] Goal 1: 실행 시 메인 윈도우가 **마지막으로 닫혔을 때와 동일한 크기, 위치, 최대화
+      상태**로 다시 열린다.
+- [x] Goal 2: 복원된 창이 저장된 위치에 **곧바로** 나타난다 — 중앙 기본 위치에서 이동하는
+      깜빡임이 보이지 않는다.
+- [x] Goal 3: **최초 실행**(저장된 값 없음)은 현재 동작 유지: 1400×800, 중앙, 일반 상태.
+- [x] Goal 4: **안전한 폴백** — 저장된 값이 유효하지 않으면(데이터 손상, 모니터 분리/재배치로
+      화면 밖에 놓이는 경우) 보이지 않게 열리는 대신 기본 위치/크기로 폴백한다.
+
+## Non-Goals (Scope Out)
+
+- 다른 창들: 오버레이 미니맵(이미 유지됨), 모달 다이얼로그(일시적 창).
+- 프로필별 geometry: 창 위치/크기는 기기 환경 설정이며 PvP/PvE 프로필 간 **공유**.
+- 화면 밖 폴백을 넘어서는 모니터별 DPI 엣지 케이스.
+- 최소화 상태 복원(최소화 상태로 닫으면 일반 창으로 다시 열림).
+
+## Requirements / Acceptance Criteria
+
+- [x] R1 (왕복): 크기/위치 조정 → 종료 → 재실행 시 동일한 bounds 재현; 최대화 → 종료 →
+      재실행 시 최대화로 열리고, 최대화 해제 시 마지막 일반 bounds로 돌아간다.
+- [x] R2 (깜빡임 없음): 창이 처음부터 복원된 위치에 표시된다(중앙 표시 후 이동 없음).
+- [ ] R3 (멀티 모니터): 보조 모니터에서 최대화 상태로 닫은 창은 그 모니터가 있는 동안 그
+      모니터에서 최대화로 다시 열린다; 모니터가 없어졌으면 기본값으로 폴백한다.
+      *(DB 편집으로 화면 밖 폴백은 검증됨; 실제 보조 모니터 확인은 보류)*
+- [ ] R4 (최소화/전체화면 종료): 최소화 상태로 닫으면 마지막 일반 bounds의 일반 창으로 열리고,
+      F11 전체화면 상태로 닫으면 일반 창 테두리의 최대화 상태로 열린다.
+      *(최소화 종료는 검증됨; F11 전체화면 종료는 보류 — 설계상 커버되나 미실행)*
+- [x] R5 (복원력): 손상되거나 범위를 벗어난 저장 값이 시작을 막지 않는다 — 기본값 적용.
+
+## Technical Decisions
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| 전역 `UserSettings` 단일 키(`app.mainWindowBounds`)에 JSON blob(`Left/Top/Width/Height/IsMaximized`) 하나로 저장, 기존 범용 설정 접근자 사용 | 원자적(세션 간 값 섞임 없음), `SettingsService` 무변경, 오버레이 미니맵의 `overlayMiniMap.settings`와 동일한 선례 | 2026-07-20 |
+| PvP/PvE 프로필별이 아닌 전역 범위 | 창 geometry는 게임 모드 상태가 아니라 기기 환경 설정 | 2026-07-20 |
+| bounds는 윈도우 생성자에서 복원, 최대화는 `SourceInitialized`에서 적용 | 생성자 시점 적용이 눈에 보이는 이동을 제거(R2); HWND 생성 후 최대화해야 복원된 bounds가 있는 모니터에서 최대화됨(R3) | 2026-07-20 |
+| `Closing`에서 1회 저장, Normal 상태가 아니면 `RestoreBounds` 사용 | 드래그 중 연속 DB 쓰기 방지; `RestoreBounds`가 최대화/최소화 종료 뒤에도 정상 bounds를 보존(R1/R4) | 2026-07-20 |
+| 화면 밖 검사: 타이틀바 영역의 사용 가능한 일부가 가상 화면과 교차해야 함 | 모니터 분리/재배치에 대한 저비용, 무의존성 가드(R3/R5) | 2026-07-20 |
+
+## Implementation Plan
+
+### Phase 1: 메인 윈도우 bounds 저장 및 복원
+
+- [x] Task 1.1: 창 표시 전에 저장된 bounds 복원(검증/폴백 포함)
+  - Files: `TarkovHelper/MainWindow.xaml.cs`
+- [x] Task 1.2: 창 종료 시 bounds + 최대화 상태 저장
+  - Files: `TarkovHelper/MainWindow.xaml.cs`
+- [x] Task 1.3: XAML 기본값은 무변경 — 최초 실행/폴백 geometry로 사용
+  - Files: `TarkovHelper/MainWindow.xaml` (변경 없음 예상)
+
+## Progress Log
+
+| Date | Update | By |
+|------|--------|-----|
+| 2026-07-20 | PRD 생성; 설계 확정(단일 JSON 설정 키, 생성자 시점 복원, 종료 시 저장) | josephjang |
+| 2026-07-20 | `MainWindow.xaml.cs`에 구현(생성자에서 복원, SourceInitialized에서 최대화, Closing에서 저장). 빌드 성공. 실행 앱 구동으로 검증(관리자 매니페스트 우회를 위해 `dotnet TarkovHelper.dll`로 실행, Win32로 창 이동/최대화/최소화, 실행 간 DB 확인): 최초 실행 기본값, 일반 왕복, RestoreBounds 포함 최대화 왕복, 최소화 종료 → 일반, 화면 밖 DB 값 → 중앙 기본값, 손상 JSON → 경고 로그 + 기본값 + 다음 종료 시 자가 복구. 보류: 실제 멀티 모니터 확인, F11 전체화면 종료. | josephjang |
+
+## Completion Criteria
+
+- [ ] 모든 Goal 및 Requirements(R1–R5) 충족 *(R3 실제 멀티 모니터 + R4 전체화면 보류)*
+- [x] Build 성공 (`dotnet build`)
+- [x] 수동 테스트: 최초 실행 기본값; 일반/최대화/최소화 왕복; 화면 밖·손상 값 폴백
+      (`user_data.db` 편집으로); 다크 타이틀바 유지 확인(스크린샷); 오버레이 미니맵 무영향
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| 저장된 bounds가 제거된 모니터를 가리켜 창이 화면 밖에 열림 | Medium | 가상 화면 대비 가시성 검사; 기본값 폴백 |
+| 손상/수동 편집된 설정 값이 시작을 깨뜨림 | Low | 방어적 파싱/검증; 실패 시 기본값 폴백 |
+| 프로세스 강제 종료 시 종료 시점 저장 누락 | Low | 수용 — 오버레이와 동일한 트레이드오프; 최악의 경우 한 세션의 조정만 유실 |
+
+---
+
+## Archive Info (완료 시 작성)
+
+- **Completed**: YYYY-MM-DD
+- **Summary**:
+- **Actual vs Planned**:
+- **Lessons Learned**:
+- **Follow-up Items**:
