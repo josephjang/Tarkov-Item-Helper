@@ -95,6 +95,9 @@ Databases (SQLite)
 - Quest/hideout progress, item inventory, settings
 - Located: `{AppDir}/Config/user_data.db` (next to the executable, e.g.
   `TarkovHelper/bin/Debug/net8.0-windows/Config/` for a Debug build — not `%LocalAppData%`)
+- Because the path is relative to the executable, Debug builds, Release builds, and
+  installed copies each have their **own separate user data**; the in-app "Data Migration"
+  button (`ConfigMigrationService`) imports from another location's Config folder
 - Location overridable via the `TARKOVHELPER_CONFIG_PATH` environment variable
   (used by e2e tests to isolate their data)
 

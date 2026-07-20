@@ -110,6 +110,8 @@ Logs written to `{AppDir}/Logs/<date>-<n>/` (next to the executable, e.g. `bin/D
 - `AppEnv.ConfigPath` - `{AppDir}/Config/` - User data (`user_data.db`); overridable via the
   `TARKOVHELPER_CONFIG_PATH` environment variable (used by e2e tests to isolate their data).
   Note `%LocalAppData%/TarkovHelper/` holds only a few auxiliary log files, not user data.
+  All paths are relative to the executable, so Debug/Release/installed copies each keep
+  **separate user data** (`ConfigMigrationService` imports across locations on demand).
 
 ### Cross-Tab Navigation
 
