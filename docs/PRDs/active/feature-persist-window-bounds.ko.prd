@@ -71,11 +71,14 @@
 |------|--------|-----|
 | 2026-07-20 | PRD 생성; 설계 확정(단일 JSON 설정 키, 생성자 시점 복원, 종료 시 저장) | josephjang |
 | 2026-07-20 | `MainWindow.xaml.cs`에 구현(생성자에서 복원, SourceInitialized에서 최대화, Closing에서 저장). 빌드 성공. 실행 앱 구동으로 검증(관리자 매니페스트 우회를 위해 `dotnet TarkovHelper.dll`로 실행, Win32로 창 이동/최대화/최소화, 실행 간 DB 확인): 최초 실행 기본값, 일반 왕복, RestoreBounds 포함 최대화 왕복, 최소화 종료 → 일반, 화면 밖 DB 값 → 중앙 기본값, 손상 JSON → 경고 로그 + 기본값 + 다음 종료 시 자가 복구. 보류: 실제 멀티 모니터 확인, F11 전체화면 종료. | josephjang |
+| 2026-07-20 | 순수 로직을 `Services/WindowBoundsPersistence.cs`로 추출(동작 동일; MainWindow는 Window/SystemParameters/저장소 연결만 담당)하고 `WindowBoundsPersistenceTests`(11개) 추가 — 왕복, 최대화/최소화 시 RestoreBounds, 화면 밖/보조 모니터 검증, 클램핑, JSON 계약을 가드. 테스트 34 통과 / 1 건너뜀. 리팩터링 후 실행 앱으로 스모크 왕복 재검증. | josephjang |
 
 ## Completion Criteria
 
 - [ ] 모든 Goal 및 Requirements(R1–R5) 충족 *(R3 실제 멀티 모니터 + R4 전체화면 보류)*
 - [x] Build 성공 (`dotnet build`)
+- [x] 자동 가드: `WindowBoundsPersistenceTests`가 저장/복원/검증 규칙(보조 모니터 시뮬레이션
+      포함)의 조용한 회귀를 방지
 - [x] 수동 테스트: 최초 실행 기본값; 일반/최대화/최소화 왕복; 화면 밖·손상 값 폴백
       (`user_data.db` 편집으로); 다크 타이틀바 유지 확인(스크린샷); 오버레이 미니맵 무영향
 
