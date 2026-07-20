@@ -75,6 +75,7 @@ window should too.
 | 2026-07-20 | PRD created; design decided (single JSON settings key, constructor-time restore, save on close) | josephjang |
 | 2026-07-20 | Implemented in `MainWindow.xaml.cs` (restore in ctor, maximize at SourceInitialized, save on Closing). Build green. Verified by driving the running app (launched via `dotnet TarkovHelper.dll` to skip the admin manifest, window moved/maximized/minimized via Win32, DB inspected between runs): first-run defaults, normal round-trip, maximized round-trip incl. RestoreBounds, minimized close → normal, off-screen DB value → centered defaults, corrupt JSON → warning logged + defaults + self-heals on next close. Pending: physical multi-monitor check, F11-fullscreen close. | josephjang |
 | 2026-07-20 | Extracted the pure core into `Services/WindowBoundsPersistence.cs` (same behavior; MainWindow now only wires Window/SystemParameters/storage) and added `WindowBoundsPersistenceTests` (11) guarding round-trips, RestoreBounds-on-maximized/minimized, off-screen/secondary-monitor validation, clamping, and the JSON contract. Suite 34 passed / 1 skipped. Post-refactor smoke round-trip re-verified on the running app. | josephjang |
+| 2026-07-20 | Added `MainWindowBoundsE2ETests` (6): launch the real app against a throwaway Config dir (new `TARKOVHELPER_CONFIG_PATH` env override in `AppEnv`), drive the actual window via Win32, assert on-screen geometry + persisted DB. Covers first-run defaults, restore round-trip, maximized reopen + un-maximize, minimized close → normal, off-screen fallback, corrupt-value self-heal. R1/R4(minimized)/R5 and the R3 fallback are now continuously verified end-to-end; suite 40 passed / 1 skipped in ~8s. | josephjang |
 
 ## Completion Criteria
 
@@ -82,6 +83,9 @@ window should too.
 - [x] Build green (`dotnet build`)
 - [x] Automated guard: `WindowBoundsPersistenceTests` protect the save/restore/validation rules
       (incl. a simulated secondary-monitor case) against silent regressions
+- [x] Automated e2e: `MainWindowBoundsE2ETests` launch the real app in an isolated Config dir
+      and verify the full save→close→relaunch→restore loop on the actual window
+      (filter out of quick runs with `dotnet test --filter Category!=E2E`)
 - [x] Manual checks: first-run defaults; normal/maximized/minimized round-trips;
       off-screen and corrupt-value fallbacks (by editing `user_data.db`); dark title bar
       still applied (seen in screenshots); overlay minimap persistence untouched
