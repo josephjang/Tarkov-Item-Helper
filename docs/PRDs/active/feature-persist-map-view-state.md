@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: In Progress (Phase 1 implemented; unit + e2e green; PR pending)
+- **Status**: In Progress (Phase 1 implemented + manually verified; PR pending)
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-24
 - **Owner**: josephjang
@@ -94,7 +94,7 @@ the rest. Any future page added to the tab cache must follow them too.
 - [x] Goal 3: **Raid detection wins**: if a raid is live (detected via
       `EftRaidEventService`), the detected map takes precedence over the saved map — both
       at first load and when a raid started while the user was on another tab.
-      *(unit-tested; manual check with a live game pending)*
+      *(unit-tested; manual verification on the Release build completed 2026-07-24)*
 - [x] Goal 4: **First run** (no saved value) keeps today's behavior: first configured map,
       100% zoom, centered.
 - [x] Goal 5: Structural side effects of the idempotent-`Loaded` fix: floor, trail,
@@ -194,10 +194,11 @@ the rest. Any future page added to the tab cache must follow them too.
 |------|--------|-----|
 | 2026-07-23 | PRD created from root-cause analysis: cached MapPage's `Loaded` re-runs full init each tab entry; `PopulateMapComboBox` forces index 0 (Woods) before `RestoreMapState`, whose `IsNullOrEmpty(_currentMapKey)` guard then always fails (dead code); the reset value is then saved, clobbering the real last map. Generalized into the five improvement principles; design decided (idempotent `Loaded`, pure `MapViewStatePersistence` core, raid > saved > default precedence, save-on-change + `Closing` backstop). | josephjang |
 | 2026-07-24 | Phase 1 implemented per Tasks 1.1–1.3 (pure core; idempotent `Loaded` with per-visit re-arm + `ReconcileActiveRaid`; `SwitchToRaidMap` extracted; save-on-change in `SelectionChanged`; `OnWindowClosing` backstop; `RestoreMapState` deleted; `DataRefreshed` unsubscribe and watcher churn removed). Tests per Tasks 1.4–1.5: 28 unit tests + 3 e2e (UIA tab driving worked; the shared harness was extracted from the bounds tests). E2e validated against the pre-fix app: all 3 fail there — including the discovery that pre-fix, closing the app while on the Map tab persisted **nothing** (`Unloaded` doesn't fire on window close), so the `Closing` backstop fixes a second latent loss, not just a theoretical one. Harness hardening: loading UI Automation flips the test host DPI-aware mid-run, which broke the bounds e2e coordinate assumptions on a 200% display — the host's DPI awareness is now pinned per-monitor-v2 up front and `GetWindowRect` normalizes physical px to WPF units. Full suite 71 passed / 1 skipped (pre-existing skip). Also fixed a pre-existing CS1998 in `MainWindow.BtnClearAllData_Click`. | josephjang |
+| 2026-07-24 | Manual verification on the Release build completed by the owner — all completion criteria met. Remaining step: open the PR. | josephjang |
 
 ## Completion Criteria
 
-- [x] All Goals and Requirements (R1–R6) met *(R3 live-game manual check pending)*
+- [x] All Goals and Requirements (R1–R6) met
 - [x] Build green (`dotnet build`)
 - [x] Unit guard: `MapViewStatePersistenceTests` protect the decision/validation rules
       (28 tests)
@@ -205,9 +206,10 @@ the rest. Any future page added to the tab cache must follow them too.
       no-clobber against the real app in an isolated Config dir
       (filter out of quick runs with `dotnet test --filter Category!=E2E`);
       validated to fail against the pre-fix app
-- [ ] Manual checks: raid auto-switch still works with a live game (start a raid with
-      the app open) — the only check not covered by automation; tab/restart round-trips,
-      first-run defaults, and invalid-value fallbacks are e2e/unit-covered above
+- [x] Manual checks: completed by the owner on the Release build (2026-07-24) — the
+      raid auto-switch check was the only item not covered by automation; tab/restart
+      round-trips, first-run defaults, and invalid-value fallbacks are e2e/unit-covered
+      above
 
 ## Risks & Mitigations
 
