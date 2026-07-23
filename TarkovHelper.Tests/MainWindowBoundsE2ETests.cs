@@ -1,6 +1,4 @@
-using System.IO;
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
 
 namespace TarkovHelper.Tests;
 
@@ -10,18 +8,11 @@ namespace TarkovHelper.Tests;
 /// <see cref="AppDriver"/> harness, drive the actual window with Win32, and assert on
 /// the on-screen geometry and the persisted user_data.db value.
 /// </summary>
+[Collection("E2E")]
 [Trait("Category", "E2E")]
-public sealed class MainWindowBoundsE2ETests : IDisposable
+public sealed class MainWindowBoundsE2ETests : E2ETestBase
 {
     private const string BoundsKey = "app.mainWindowBounds";
-    private readonly string _root =
-        Path.Combine(Path.GetTempPath(), "TarkovHelperE2E", Guid.NewGuid().ToString("N"));
-
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-        try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
-    }
 
     [E2EFact]
     public void First_run_uses_defaults_and_saves_them_on_close()
@@ -171,13 +162,6 @@ public sealed class MainWindowBoundsE2ETests : IDisposable
     }
 
     #region Helpers
-
-    private string NewConfigDir()
-    {
-        var dir = Path.Combine(_root, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        return dir;
-    }
 
     private static void AssertNear(double expected, double actual, double tolerance = 2.0)
         => Assert.InRange(actual, expected - tolerance, expected + tolerance);

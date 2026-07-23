@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.IO;
-using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace TarkovHelper.Tests;
 
@@ -15,8 +15,9 @@ namespace TarkovHelper.Tests;
 /// MapViewStatePersistenceTests plus manual checks), and raid precedence is unit-tested
 /// only (driving a fake EFT log through the FileSystemWatcher is too fragile for CI).
 /// </summary>
+[Collection("E2E")]
 [Trait("Category", "E2E")]
-public sealed class MapStateE2ETests : IDisposable
+public sealed class MapStateE2ETests : E2ETestBase
 {
     private const string MapKeySetting = "map.lastSelectedMap";
     private const string ZoomSetting = "map.lastZoomLevel";
@@ -27,15 +28,6 @@ public sealed class MapStateE2ETests : IDisposable
     private const string QuestsTab = "TabQuests";
     private const string MapCombo = "CmbMapSelect";
     private const string QuestsPageMarker = "LstQuests";
-
-    private readonly string _root =
-        Path.Combine(Path.GetTempPath(), "TarkovHelperE2E", Guid.NewGuid().ToString("N"));
-
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-        try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
-    }
 
     [E2EFact]
     public void Saved_map_and_view_are_restored_on_launch_and_not_clobbered_on_close()
@@ -51,7 +43,7 @@ public sealed class MapStateE2ETests : IDisposable
         app.SelectTab(MapTab, MapCombo);
 
         // Pre-fix this showed Woods (index 0) and the close below then saved Woods back.
-        Assert.Equal("Customs", app.WaitForComboSelection(MapCombo));
+        Assert.Equal(MapDisplayName("Customs"), app.WaitForComboSelection(MapCombo));
 
         app.CloseAndWaitForExit();
 
@@ -72,13 +64,13 @@ public sealed class MapStateE2ETests : IDisposable
 
         using var app = AppDriver.Launch(configDir);
         app.SelectTab(MapTab, MapCombo);
-        Assert.Equal("Customs", app.WaitForComboSelection(MapCombo));
+        Assert.Equal(MapDisplayName("Customs"), app.WaitForComboSelection(MapCombo));
 
         app.SelectTab(QuestsTab, QuestsPageMarker);
         app.SelectTab(MapTab, MapCombo);
 
         // The reported bug: returning to the Map tab reset the selection to Woods.
-        Assert.Equal("Customs", app.WaitForComboSelection(MapCombo));
+        Assert.Equal(MapDisplayName("Customs"), app.WaitForComboSelection(MapCombo));
 
         app.CloseAndWaitForExit();
 
@@ -94,7 +86,7 @@ public sealed class MapStateE2ETests : IDisposable
         app.SelectTab(MapTab, MapCombo);
 
         // No saved state: today's default behavior — first map in map_configs.json.
-        Assert.Equal("Woods", app.WaitForComboSelection(MapCombo));
+        Assert.Equal(MapDisplayName("Woods"), app.WaitForComboSelection(MapCombo));
 
         app.CloseAndWaitForExit();
 
@@ -103,18 +95,36 @@ public sealed class MapStateE2ETests : IDisposable
 
     #region Helpers
 
-    private string NewConfigDir()
-    {
-        var dir = Path.Combine(_root, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        return dir;
-    }
-
     private static double ReadDouble(string configDir, string key)
     {
         var value = E2EDb.ReadSetting(configDir, key);
         Assert.NotNull(value);
         return double.Parse(value!, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Expected combo text for a map key, resolved from the app's own map_configs.json.
+    /// The combo shows displayName, not the key (WaitForComboSelection reads the UIA
+    /// Name = ComboBoxItem.Content) — equal for Woods/Customs today, but resolving it
+    /// keeps these assertions correct for maps whose display name diverges
+    /// (e.g. Labs → "The Lab") and for future renames.
+    /// </summary>
+    private static string MapDisplayName(string mapKey)
+    {
+        var appDir = Path.GetDirectoryName(AppUnderTest.DllPath!)!;
+        var configPath = Path.Combine(appDir, "Assets", "DB", "Data", "map_configs.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+
+        foreach (var map in doc.RootElement.GetProperty("maps").EnumerateArray())
+        {
+            if (string.Equals(map.GetProperty("key").GetString(), mapKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return map.TryGetProperty("displayName", out var displayName)
+                    ? displayName.GetString() ?? mapKey
+                    : mapKey;
+            }
+        }
+        return mapKey;
     }
 
     #endregion
