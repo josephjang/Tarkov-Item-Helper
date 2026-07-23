@@ -516,6 +516,10 @@ public class SettingsService
     public double MapLastTranslateX { get => Map.LastTranslateX; set => Map.LastTranslateX = value; }
     public double MapLastTranslateY { get => Map.LastTranslateY; set => Map.LastTranslateY = value; }
 
+    /// <summary>Saves the whole map view state (map/zoom/pan) in one DB round-trip; see MapSettings.SaveLastView.</summary>
+    public void SaveMapLastView(string? mapKey, double zoomLevel, double translateX, double translateY)
+        => Map.SaveLastView(mapKey, zoomLevel, translateX, translateY);
+
     public void AddHiddenQuest(string questId) => Map.AddHiddenQuest(questId);
     public void RemoveHiddenQuest(string questId) => Map.RemoveHiddenQuest(questId);
     public void ClearHiddenQuests() => Map.ClearHiddenQuests();
