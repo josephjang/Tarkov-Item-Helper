@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Status**: Planning
+- **Status**: In Progress (Phase 1 구현 완료; 단위 + e2e 그린; PR 대기)
 - **Created**: 2026-07-23
-- **Updated**: 2026-07-23
+- **Updated**: 2026-07-24
 - **Owner**: josephjang
 - **Translations**: 영문 원본 `feature-persist-map-view-state.md` (1:1 동기화 유지; 내용 충돌 시 영문이 기준)
 
@@ -86,15 +86,15 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 
 ## Goals (Phase 1 — Map 탭)
 
-- [ ] Goal 1: Map 탭으로 돌아오면 떠날 때와 **같은 맵, 줌, 팬**이 보인다.
-- [ ] Goal 2: 앱을 재시작해도 **마지막 본 맵, 줌, 팬**이 복원된다 (저장 인프라는 이미
+- [x] Goal 1: Map 탭으로 돌아오면 떠날 때와 **같은 맵, 줌, 팬**이 보인다.
+- [x] Goal 2: 앱을 재시작해도 **마지막 본 맵, 줌, 팬**이 복원된다 (저장 인프라는 이미
       존재; 복원이 빠진 반쪽이다).
-- [ ] Goal 3: **레이드 감지가 우선한다**: 레이드가 진행 중이면(`EftRaidEventService`로
+- [x] Goal 3: **레이드 감지가 우선한다**: 레이드가 진행 중이면(`EftRaidEventService`로
       감지) 감지된 맵이 저장된 맵보다 우선한다 — 최초 로드 시에도, 다른 탭에 있는 동안
-      레이드가 시작된 경우에도.
-- [ ] Goal 4: **첫 실행**(저장값 없음)은 현재 동작을 유지한다: 설정된 첫 맵, 줌 100%,
+      레이드가 시작된 경우에도. *(단위 테스트 완료; 실제 게임으로의 수동 확인 보류)*
+- [x] Goal 4: **첫 실행**(저장값 없음)은 현재 동작을 유지한다: 설정된 첫 맵, 줌 100%,
       중앙 정렬.
-- [ ] Goal 5: 멱등 `Loaded` 수정의 구조적 부수 효과: 층, 궤적, 드로어 상태, 마커 매니저
+- [x] Goal 5: 멱등 `Loaded` 수정의 구조적 부수 효과: 층, 궤적, 드로어 상태, 마커 매니저
       정체성이 탭 전환에서 생존; `DataRefreshed` 죽은 구독 버그와 탭 진입마다의
       `FileSystemWatcher` 재생성이 수정된다.
 
@@ -116,16 +116,20 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 
 ## Requirements / Acceptance Criteria
 
-- [ ] R1 (탭 왕복): 맵 M 선택, 줌/팬 조작 → 탭 전환 → 복귀: 같은 줌/팬의 맵 M; 층,
-      궤적, 드로어 상태 그대로.
-- [ ] R2 (재시작 왕복): 맵 M 선택, 줌/팬 조작 → 앱 종료 → 재실행 → Map 탭: 저장된
-      줌/팬으로 맵 M 복원.
-- [ ] R3 (레이드 우선): 맵 R에서 레이드 진행 중이면 Map 탭 최초 로드는 (저장된 맵이
+- [x] R1 (탭 왕복): 맵 M 선택, 줌/팬 조작 → 탭 전환 → 복귀: 같은 줌/팬의 맵 M; 층,
+      궤적, 드로어 상태 그대로. *(맵 선택은 e2e 검증; 줌/팬/층/궤적은 재진입 시
+      재초기화가 없어져 구조적으로 생존)*
+- [x] R2 (재시작 왕복): 맵 M 선택, 줌/팬 조작 → 앱 종료 → 재실행 → Map 탭: 저장된
+      줌/팬으로 맵 M 복원. *(e2e: 시드된 맵+뷰가 복원되고 그대로 재저장됨)*
+- [x] R3 (레이드 우선): 맵 R에서 레이드 진행 중이면 Map 탭 최초 로드는 (저장된 맵이
       아닌) R을 표시; 다른 탭에 있는 동안 시작된 레이드는 복귀 시 맵을 전환한다.
-- [ ] R4 (첫 실행): 저장값 없음 → 설정된 첫 맵, 줌 100%, 중앙 정렬.
-- [ ] R5 (내성): `map_configs.json`에 더 이상 없는 저장 맵 키나 비유한(non-finite)
-      줌/팬 값은 기본값으로 fallback — 크래시나 빈 맵은 절대 없음.
-- [ ] R6 (덮어쓰기 금지): 탭 전환만으로는 저장된 맵이 리셋값으로 덮어써지지 않는다.
+      *(`DecideInitialMap`/`GetActiveRaidMapKey` 단위 테스트; e2e로는 구동 불가)*
+- [x] R4 (첫 실행): 저장값 없음 → 설정된 첫 맵, 줌 100%, 중앙 정렬. *(e2e)*
+- [x] R5 (내성): `map_configs.json`에 더 이상 없는 저장 맵 키나 비유한(non-finite)
+      줌/팬 값은 기본값으로 fallback — 크래시나 빈 맵은 절대 없음. *(fallback 규칙
+      단위 테스트)*
+- [x] R6 (덮어쓰기 금지): 탭 전환만으로는 저장된 맵이 리셋값으로 덮어써지지 않는다.
+      *(e2e: 수정 전 앱에서는 이 테스트들이 실패 — Woods 표시, null/리셋값 저장)*
 
 ## Technical Decisions
 
@@ -142,9 +146,9 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 
 ### Phase 1: Map 뷰 상태 복원 (이 PRD)
 
-- [ ] Task 1.1: 순수 결정 코어 추가
+- [x] Task 1.1: 순수 결정 코어 추가
   - Files: `TarkovHelper/Services/Map/MapViewStatePersistence.cs` (신규)
-- [ ] Task 1.2: `MapTrackerPage_Loaded` 멱등화 — 1회성 초기화(설정, 마커 매니저, 맵 결정
+- [x] Task 1.2: `MapTrackerPage_Loaded` 멱등화 — 1회성 초기화(설정, 마커 매니저, 맵 결정
       + `PopulateMapComboBox(selectKey)`, 데이터 로드, 드로어, 오버레이)와 탭 진입마다의
       재장전(진행도/키보드/레이드 이벤트 재구독, `StartAutoTracking`,
       `ReconcileActiveRaid`)을 분리; `PopulateMapComboBox`를 파라미터화해 index 0은
@@ -153,18 +157,18 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
       `StartMonitoring`에 `IsMonitoring` 가드; `HandleRaidStarted`에서
       `SwitchToRaidMap(...)` 추출 및 `ReconcileActiveRaid()` 추가
   - Files: `TarkovHelper/Pages/Map/MapPage.xaml.cs`
-- [ ] Task 1.3: 종료 백스톱 — 창 닫힘 시 맵 뷰 상태 저장
+- [x] Task 1.3: 종료 백스톱 — 창 닫힘 시 맵 뷰 상태 저장
   - Files: `TarkovHelper/MainWindow.xaml.cs` (`OnWindowClosing`: `_mapTrackerPage?.PersistViewState();`)
 
 ### Phase 1 테스트
 
-- [ ] Task 1.4: 결정 코어 단위 테스트 (~10개): 저장 키 happy path; 대소문자 불일치 시
+- [x] Task 1.4: 결정 코어 단위 테스트 (~10개): 저장 키 happy path; 대소문자 불일치 시
       canonical 키 반환; 설정에 없는 저장 키 → 첫 맵 fallback; 첫 실행 → 첫 맵; 진행 중
       레이드가 저장 키보다 우선; 알 수 없는 레이드 키는 무시; 빈 키 목록 → null;
       `GetActiveRaidMapKey` 레이드 상태별 (null/Ended/Matching/InRaid/빈 MapKey);
       `ValidateView` 왕복, 양끝 줌 클램프, NaN/Infinity 거부
   - Files: `TarkovHelper.Tests/MapViewStatePersistenceTests.cs` (신규)
-- [ ] Task 1.5: E2E 테스트 — `MainWindowBoundsE2ETests.cs`에서 공용 앱 드라이버
+- [x] Task 1.5: E2E 테스트 — `MainWindowBoundsE2ETests.cs`에서 공용 앱 드라이버
       (`App`/`Win32`/`E2EFact`)를 재사용 가능한 harness로 추출; UI Automation으로 탭
       클릭과 맵 콤보 읽기 (WPF는 `x:Name` — `TabMap`/`TabQuests`/`CmbMapSelect` — 을
       AutomationId로 노출). 케이스: 시드된 맵이 실행 시 복원되고 종료 시 **덮어써지지
@@ -180,18 +184,20 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 | Date | Update | By |
 |------|--------|-----|
 | 2026-07-23 | 근본 원인 분석으로부터 PRD 작성: 캐시된 MapPage의 `Loaded`가 탭 진입마다 전체 초기화를 재실행; `PopulateMapComboBox`가 `RestoreMapState`보다 먼저 index 0(Woods)을 강제하고, `IsNullOrEmpty(_currentMapKey)` 가드가 항상 실패 (죽은 코드); 이후 리셋값이 저장되어 실제 마지막 맵을 덮어씀. 5개 개선 원칙으로 일반화; 설계 확정 (멱등 `Loaded`, 순수 `MapViewStatePersistence` 코어, 레이드 > 저장 > 기본값 우선순위, 변경 시 저장 + `Closing` 백스톱). | josephjang |
+| 2026-07-24 | Task 1.1–1.3대로 Phase 1 구현 (순수 코어; 탭 진입 재장전 + `ReconcileActiveRaid`를 갖춘 멱등 `Loaded`; `SwitchToRaidMap` 추출; `SelectionChanged`에서 변경 시 저장; `OnWindowClosing` 백스톱; `RestoreMapState` 삭제; `DataRefreshed` 구독 해제와 watcher 재생성 제거). Task 1.4–1.5 테스트: 단위 28개 + e2e 3개 (UIA 탭 구동 성공; 공용 harness를 bounds 테스트에서 추출). 수정 전 앱을 상대로 e2e 검증: 3개 모두 실패 — 특히 수정 전에는 Map 탭을 보다가 앱을 닫으면 **아무것도** 저장되지 않았음이 확인됨 (창 닫힘 시 `Unloaded` 미발화), 즉 `Closing` 백스톱은 이론이 아닌 실재하던 두 번째 유실을 고침. harness 보강: UI Automation을 로드하면 테스트 호스트가 실행 중 DPI-aware로 바뀌어 200% 디스플레이에서 bounds e2e의 좌표 전제가 깨짐 — 호스트 DPI 인지를 per-monitor-v2로 선고정하고 `GetWindowRect`가 물리 픽셀을 WPF 단위로 정규화하도록 수정. 전체 스위트 71 통과 / 1 건너뜀 (기존 스킵). `MainWindow.BtnClearAllData_Click`의 기존 CS1998도 수정. | josephjang |
 
 ## Completion Criteria
 
-- [ ] 모든 Goals와 Requirements (R1–R6) 충족
-- [ ] 빌드 그린 (`dotnet build`)
-- [ ] 단위 가드: `MapViewStatePersistenceTests`가 결정/검증 규칙을 보호
-- [ ] E2E: `MapStateE2ETests`가 격리된 Config 디렉토리에서 실제 앱을 상대로 실행 시
+- [x] 모든 Goals와 Requirements (R1–R6) 충족 *(R3 실제 게임 수동 확인 보류)*
+- [x] 빌드 그린 (`dotnet build`)
+- [x] 단위 가드: `MapViewStatePersistenceTests`가 결정/검증 규칙을 보호 (28개)
+- [x] E2E: `MapStateE2ETests`가 격리된 Config 디렉토리에서 실제 앱을 상대로 실행 시
       복원, 탭 전환 생존, 덮어쓰기 금지를 검증
-      (빠른 실행에서는 `dotnet test --filter Category!=E2E`로 제외)
-- [ ] 수동 확인: 줌/팬 포함 탭 왕복; 재시작 왕복; 레이드 자동 전환 정상 동작 (앱을 켠
-      채 레이드 시작); 첫 실행 기본값; 손상/알 수 없는 저장 키의 깔끔한 fallback
-      (`user_data.db` 편집으로 확인)
+      (빠른 실행에서는 `dotnet test --filter Category!=E2E`로 제외);
+      수정 전 앱에서 실패하는 것까지 확인됨
+- [ ] 수동 확인: 실제 게임으로 레이드 자동 전환 정상 동작 (앱을 켠 채 레이드 시작) —
+      자동화로 커버되지 않는 유일한 항목; 탭/재시작 왕복, 첫 실행 기본값, 무효 값
+      fallback은 위의 e2e/단위 테스트가 커버
 
 ## Risks & Mitigations
 
