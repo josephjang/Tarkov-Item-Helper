@@ -11,8 +11,9 @@ namespace TarkovHelper.Tests;
 /// </summary>
 public sealed class MapViewStatePersistenceTests
 {
-    private const double MinZoom = 0.1;
-    private const double MaxZoom = 5.0;
+    // MinZoom/MaxZoom resolve to MapViewStatePersistence's public constants via the
+    // `using static` import — asserting against the real bounds, not a copy that
+    // could silently drift from the app's.
 
     private static readonly string[] Maps = { "Woods", "Customs", "Factory" };
 
@@ -119,6 +120,66 @@ public sealed class MapViewStatePersistenceTests
     public void Live_raid_without_a_map_key_yields_null(string? mapKey)
     {
         Assert.Null(GetActiveRaidMapKey(Raid(RaidState.InRaid, mapKey)));
+    }
+
+    #endregion
+
+    #region GetRaidIdentity
+
+    [Fact]
+    public void Null_raid_has_no_identity()
+    {
+        Assert.Null(GetRaidIdentity(null));
+    }
+
+    [Fact]
+    public void Raid_id_is_preferred_as_the_identity()
+    {
+        var raid = Raid(RaidState.InRaid);
+        raid.RaidId = "raid-1";
+        raid.SessionId = "session-1";
+        raid.StartTime = new DateTime(2026, 7, 24, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.Equal("raid-1", GetRaidIdentity(raid));
+    }
+
+    [Fact]
+    public void Session_id_is_used_when_the_raid_id_is_missing()
+    {
+        var raid = Raid(RaidState.InRaid);
+        raid.SessionId = "session-1";
+
+        Assert.Equal("session-1", GetRaidIdentity(raid));
+    }
+
+    [Fact]
+    public void Start_time_is_the_last_resort_identity()
+    {
+        var raid = Raid(RaidState.InRaid);
+        var start = new DateTime(2026, 7, 24, 12, 0, 0, DateTimeKind.Utc);
+        raid.StartTime = start;
+
+        Assert.Equal(start.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            GetRaidIdentity(raid));
+    }
+
+    [Fact]
+    public void Raid_without_any_identifier_yields_null()
+    {
+        // Null identity means "cannot prove it's a new raid" — reconciliation preserves
+        // the trail rather than clearing it.
+        Assert.Null(GetRaidIdentity(Raid(RaidState.InRaid)));
+    }
+
+    [Fact]
+    public void Two_raids_with_different_ids_are_distinct()
+    {
+        var first = Raid(RaidState.InRaid);
+        first.RaidId = "raid-1";
+        var second = Raid(RaidState.InRaid);
+        second.RaidId = "raid-2";
+
+        Assert.NotEqual(GetRaidIdentity(first), GetRaidIdentity(second));
     }
 
     #endregion
