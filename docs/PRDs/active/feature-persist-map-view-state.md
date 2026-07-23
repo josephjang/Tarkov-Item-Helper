@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: In Progress (Phase 1 implemented + manually verified; PR pending)
+- **Status**: Review (implemented + verified; PR #8 open on josephjang/Tarkov-Item-Helper)
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-24
 - **Owner**: josephjang
