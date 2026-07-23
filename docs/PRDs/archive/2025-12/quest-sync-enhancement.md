@@ -4,7 +4,7 @@
 퀘스트 로그 동기화 기능의 UX 개선. 계정 초기화(와이프) 시 로그 정리 안내와 동기화 결과에서 진행중 퀘스트 표시 기능 추가. (영어, 한국어, 일본어 언어 설정따라서 안내가 나와야함)
 
 ## Reference
-- 연계 문서: `PRDs/quest-sync.prd`
+- 연계 문서: `PRDs/quest-sync.md`
 - 기존 서비스: `LogSyncService.cs`, `QuestProgressService.cs`
 
 ---

@@ -6,7 +6,7 @@
 - **Created**: 2026-07-20
 - **Updated**: 2026-07-23
 - **Owner**: josephjang
-- **Translations**: Korean companion at `feature-persist-window-bounds.ko.prd` (kept in sync 1:1)
+- **Translations**: Korean companion at `feature-persist-window-bounds.ko.md` (kept in sync 1:1)
 
 ## Problem Statement
 
@@ -118,4 +118,4 @@ window should too.
 - **Follow-up Items**: R3 physical secondary-monitor and R4 F11-fullscreen-close checks
   when the hardware/scenario is at hand (design-covered; fallbacks verified). The e2e
   harness in `MainWindowBoundsE2ETests.cs` is slated for extraction/reuse by
-  `feature-persist-map-view-state.prd`.
+  `feature-persist-map-view-state.md`.

@@ -6,7 +6,7 @@
 - **Created**: 2026-07-02
 - **Updated**: 2026-07-02
 - **Owner**: josephjang
-- **Translations**: Korean companion at `feature-quest-unlock-sort.ko.prd` (kept in sync 1:1)
+- **Translations**: Korean companion at `feature-quest-unlock-sort.ko.md` (kept in sync 1:1)
 - **Wording convention**: this English PRD describes orderings in English and uses full language
   names (English / Korean / Japanese). This PRD is **implementation-independent** — it states the
   required behavior, not how it is coded.

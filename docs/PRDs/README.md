@@ -3,7 +3,7 @@
 이 폴더는 저장소 전체(TarkovHelper + TarkovDBEditor + 프로젝트 간 교차 작업)의 기능 개발
 계획을 관리하는 단일 위치입니다. `TarkovHelper`만을 위한 폴더가 아니라서 저장소 루트의
 `docs/`(TarkovHelper.sln, TarkovHelper/, TarkovDBEditor/와 형제 위치)에 있습니다 — 예를 들어
-`fix-quest-name-localization.prd`는 TarkovDBEditor의 데이터 파이프라인과 TarkovHelper의
+`fix-quest-name-localization.md`는 TarkovDBEditor의 데이터 파이프라인과 TarkovHelper의
 WPF 앱을 모두 다룹니다.
 
 ## PRD vs 참고 문서
@@ -32,9 +32,13 @@ docs/
 ## Workflow
 
 ### 1. 새 기능 계획
-1. `templates/feature-template.prd`를 복사하여 `active/` 폴더에 생성
-2. 파일명: `feature-[기능명].prd` (예: `feature-map-v2.prd`)
+1. `templates/feature-template.md`를 복사하여 `active/` 폴더에 생성
+2. 파일명: `feature-[기능명].md` (예: `feature-map-v2.md`)
 3. PRD 내용 작성
+
+> 확장자는 일반 `.md`를 사용합니다 (2026-07-24에 전체 `.prd` → `.md` 일괄 전환).
+> 에디터와 GitHub이 Markdown으로 인식하게 하기 위함이며, PRD 여부는 확장자가 아니라
+> 위치(`docs/PRDs/`)와 파일명 접두사(`feature-*`/`fix-*`)로 구분합니다.
 
 ### 2. 작업 진행
 1. Status를 "In Progress"로 변경
@@ -61,7 +65,7 @@ docs/
 
 ## 이중 언어(EN/KO) PRD
 
-사용자 대상 동작을 다루는 PRD는 영문 원본(`name.prd`) + 한글 번역본(`name.ko.prd`)을
+사용자 대상 동작을 다루는 PRD는 영문 원본(`name.md`) + 한글 번역본(`name.ko.md`)을
 1:1로 유지할 수 있습니다 (예: `feature-hideout-localized-sort.*`,
 `feature-quest-unlock-sort.*`, `fix-quest-name-localization.*`). 두 문서 내용이 충돌하면
 **영문 원본이 기준**입니다. 코드 식별자(`AppLanguage.KO`, `NameKO` 등)는 번역하지 않고
@@ -97,7 +101,7 @@ ls docs/PRDs/active/
 
 # PRD 아카이빙 (2026년 7월)
 New-Item -ItemType Directory -Force docs/PRDs/archive/2026-07/
-git mv docs/PRDs/active/feature-xxx.prd docs/PRDs/archive/2026-07/
+git mv docs/PRDs/active/feature-xxx.md docs/PRDs/archive/2026-07/
 ```
 
 ## Best Practices

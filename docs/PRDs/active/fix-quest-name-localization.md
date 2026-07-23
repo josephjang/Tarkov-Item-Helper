@@ -7,7 +7,7 @@
 - **Updated**: 2026-06-13
 - **Owner**: josephjang
 - **Related Agents**: db-schema-analyzer, service-architect, wpf-xaml-specialist
-- **Translations**: Korean companion at `fix-quest-name-localization.ko.prd` (kept in sync 1:1)
+- **Translations**: Korean companion at `fix-quest-name-localization.ko.md` (kept in sync 1:1)
 - **Scope note**: This is a general (language-agnostic) localization defect affecting every non-English language the app supports — Korean and Japanese today. Korean is used as the running example because it was the reported symptom, but every fix applies equally to `NameJA`/JA. Root causes span both the **TarkovDBEditor** data pipeline and the **TarkovHelper** WPF app; precise component names are used throughout (not the ambiguous term "Helper").
 
 ## Background: Current Data Update Process

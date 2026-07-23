@@ -1007,5 +1007,5 @@ Files to Modify:
 
 
 ================================================================================
-FILE GENERATED: C:\prg\Tarkov-Item-Helper\TarkovHelper\docs\MapFeature.prd
+FILE GENERATED: C:\prg\Tarkov-Item-Helper\TarkovHelper\docs\MapFeature.md
 ================================================================================

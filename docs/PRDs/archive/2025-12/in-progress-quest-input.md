@@ -26,7 +26,7 @@
 
 ## Reference
 - 기존 서비스: `QuestGraphService.cs`, `QuestProgressService.cs`
-- 연계 문서: `PRDs/quest-sync.prd`
+- 연계 문서: `PRDs/quest-sync.md`
 
 ---
 

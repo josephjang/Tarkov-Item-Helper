@@ -6,7 +6,7 @@
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-23
 - **Owner**: josephjang
-- **Translations**: Korean companion at `feature-persist-map-view-state.ko.prd` (kept in sync 1:1)
+- **Translations**: Korean companion at `feature-persist-map-view-state.ko.md` (kept in sync 1:1)
 
 ## Problem Statement
 
