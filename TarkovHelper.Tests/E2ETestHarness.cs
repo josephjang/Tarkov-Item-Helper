@@ -31,11 +31,15 @@ internal sealed class AppDriver : IDisposable
 {
     private readonly Process _process;
     private readonly IntPtr _hwnd;
+    // Root UIA element for the main window, resolved once — every TryFindElement poll
+    // reuses it instead of re-entering COM via FromHandle each 250ms tick.
+    private readonly AutomationElement _uiaRoot;
 
     private AppDriver(Process process, IntPtr hwnd)
     {
         _process = process;
         _hwnd = hwnd;
+        _uiaRoot = AutomationElement.FromHandle(hwnd);
     }
 
     public static AppDriver Launch(string configDir)
@@ -139,6 +143,12 @@ internal sealed class AppDriver : IDisposable
     public void SelectTab(string tabAutomationId, string readyElementAutomationId,
         string bounceTabAutomationId = "TabItems")
     {
+        if (string.Equals(tabAutomationId, bounceTabAutomationId, StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"bounce tab must differ from the target tab '{tabAutomationId}' — bouncing to itself " +
+                "just re-selects the checked radio button (a no-op) and would spin to the timeout",
+                nameof(bounceTabAutomationId));
+
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
         Select(WaitForElement(tabAutomationId, deadline));
 
@@ -192,7 +202,7 @@ internal sealed class AppDriver : IDisposable
     }
 
     private AutomationElement? TryFindElement(string automationId)
-        => AutomationElement.FromHandle(_hwnd).FindFirst(
+        => _uiaRoot.FindFirst(
             TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
 
@@ -216,6 +226,40 @@ public sealed class E2EFactAttribute : FactAttribute
     {
         if (AppUnderTest.DllPath == null)
             Skip = "TarkovHelper build output not found - build TarkovHelper.csproj first";
+    }
+}
+
+/// <summary>
+/// All e2e test classes join this single xUnit collection so they run SERIALLY.
+/// Without it, xUnit runs different classes in parallel by default, which would launch
+/// two real app instances at once — they fight over window focus and the global
+/// keyboard hook, and one class's Dispose calls the process-global
+/// SqliteConnection.ClearAllPools under the other's in-flight DB access.
+/// </summary>
+[CollectionDefinition("E2E")]
+public sealed class E2ETestCollection { }
+
+/// <summary>
+/// Shared per-class scaffolding for e2e tests: an isolated temp root for throwaway
+/// Config folders, and cleanup that clears the process-wide SQLite pools first so the
+/// user_data.db files are unlocked before the directory delete.
+/// </summary>
+public abstract class E2ETestBase : IDisposable
+{
+    private readonly string _root =
+        Path.Combine(Path.GetTempPath(), "TarkovHelperE2E", Guid.NewGuid().ToString("N"));
+
+    protected string NewConfigDir()
+    {
+        var dir = Path.Combine(_root, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    public void Dispose()
+    {
+        SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
     }
 }
 
