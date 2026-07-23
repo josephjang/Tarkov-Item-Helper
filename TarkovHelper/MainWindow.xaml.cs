@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService = SettingsService.Instance;
     private readonly LogSyncService _logSyncService = LogSyncService.Instance;
     private bool _isLoading;
+
+    // 시작 로딩(_isLoading) 중 눌린 탭 — 로딩이 끝나면 Window_Loaded가 재생한다
+    private object? _pendingTabDuringLoad;
     private QuestListPage? _questListPage;
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
@@ -141,6 +144,14 @@ public partial class MainWindow : Window
 
         _isLoading = false;
 
+        // Replay a tab click swallowed while _isLoading was set (see Tab_Checked)
+        if (_pendingTabDuringLoad != null)
+        {
+            var pendingTab = _pendingTabDuringLoad;
+            _pendingTabDuringLoad = null;
+            Tab_Checked(pendingTab, new RoutedEventArgs());
+        }
+
         // Start database update check (initial check + background updates every 5 minutes)
         StartDatabaseUpdateService();
 
@@ -224,6 +235,27 @@ public partial class MainWindow : Window
         }
 
         UpdateQuestSyncUI();
+    }
+
+    /// <summary>
+    /// Re-points the log watchers (quest sync + raid events) at the current
+    /// LogFolderPath. Called after the user changes the log folder in Settings —
+    /// FileSystemWatchers bind to the path they were started with, so without a
+    /// restart they keep watching the old folder until the app is relaunched.
+    /// (StartMonitoring on both services stops any previous watcher first.)
+    /// </summary>
+    private void RestartLogMonitoring()
+    {
+        if (!_settingsService.LogMonitoringEnabled)
+            return;
+
+        var logPath = _settingsService.LogFolderPath;
+        if (string.IsNullOrEmpty(logPath) || !Directory.Exists(logPath))
+            return;
+
+        _logSyncService.StartMonitoring(logPath);
+        EftRaidEventService.Instance.StartMonitoring(logPath);
+        _log.Info($"Log monitoring re-pointed to: {logPath}");
     }
 
     /// <summary>
@@ -443,7 +475,14 @@ public partial class MainWindow : Window
     /// </summary>
     private void Tab_Checked(object sender, RoutedEventArgs e)
     {
-        if (_isLoading) return;
+        if (_isLoading)
+        {
+            // 시작 로딩 중의 탭 클릭은 라디오 버튼만 체크되고 페이지 전환은 무시된다 —
+            // 그대로 return만 하면 이미 체크된 탭을 다시 눌러도 Checked가 재발화하지 않아
+            // "죽은 탭"이 된다. 클릭을 기억해 두었다가 로딩이 끝나는 즉시 반영한다.
+            _pendingTabDuringLoad = sender;
+            return;
+        }
 
         if (sender == TabQuests && _questListPage != null)
         {
@@ -1107,6 +1146,7 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(detectedPath))
         {
             _settingsService.LogFolderPath = detectedPath;
+            RestartLogMonitoring();
             UpdateSettingsUI();
 
             var message = _loc.CurrentLanguage switch
@@ -1162,6 +1202,7 @@ public partial class MainWindow : Window
             if (Directory.Exists(selectedPath))
             {
                 _settingsService.LogFolderPath = selectedPath;
+                RestartLogMonitoring();
                 UpdateSettingsUI();
             }
         }
@@ -1173,6 +1214,7 @@ public partial class MainWindow : Window
     private void BtnResetLogFolder_Click(object sender, RoutedEventArgs e)
     {
         _settingsService.ResetLogFolderPath();
+        RestartLogMonitoring();
         UpdateSettingsUI();
     }
 
@@ -2201,28 +2243,34 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
-        try
-        {
-            // WPF does not guarantee Unloaded at shutdown, so the map page's view
-            // state (map/zoom/pan) gets its close-time save here as a backstop.
-            _mapTrackerPage?.PersistViewState();
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Failed to save map view state: {ex.Message}");
-        }
+        // WPF does not guarantee Unloaded at shutdown, so the map page's view
+        // state (map/zoom/pan) gets its close-time save here as a backstop.
+        TrySaveOnClose("map view state", () => _mapTrackerPage?.PersistViewState());
 
-        try
+        TrySaveOnClose("window bounds", () =>
         {
             var json = WindowBoundsPersistence.CreateSaveValue(
                 WindowState, new Rect(Left, Top, ActualWidth, ActualHeight), RestoreBounds);
             if (json == null) return; // unusable geometry: keep the previously saved value
 
             _settingsService.SetValue(WindowBoundsKey, json);
+        });
+    }
+
+    /// <summary>
+    /// Runs a best-effort close-time save, logging (never rethrowing) on failure so one
+    /// failed save can't abort the others or block shutdown. <paramref name="what"/> is
+    /// interpolated into the warning to keep the sites' messages consistent.
+    /// </summary>
+    private void TrySaveOnClose(string what, Action save)
+    {
+        try
+        {
+            save();
         }
         catch (Exception ex)
         {
-            _log.Warning($"Failed to save window bounds: {ex.Message}");
+            _log.Warning($"Failed to save {what}: {ex.Message}");
         }
     }
 
