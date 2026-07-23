@@ -10,6 +10,14 @@ namespace TarkovHelper.Services.Map;
 /// </summary>
 public static class MapViewStatePersistence
 {
+    /// <summary>
+    /// Zoom bounds for the map view. Single source of truth — MapPage's zoom pipeline
+    /// and the saved-view validation both clamp against these, and the unit tests
+    /// assert against them rather than a copy that could drift.
+    /// </summary>
+    public const double MinZoom = 0.1;
+    public const double MaxZoom = 5.0;
+
     /// <summary>Where the initial-map decision came from.</summary>
     public enum MapChoiceSource
     {
@@ -79,6 +87,21 @@ public static class MapViewStatePersistence
         if (raid.State is not (RaidState.Matching or RaidState.Connecting or RaidState.InRaid))
             return null;
         return string.IsNullOrEmpty(raid.MapKey) ? null : raid.MapKey;
+    }
+
+    /// <summary>
+    /// A stable identity for a raid, used to tell "the same ongoing raid" from "a new
+    /// raid that happens to be on the same map" when the page reconciles after missing
+    /// live events while unloaded. Prefers the log's raid id, then the session id, then
+    /// the start time; null when the raid carries none of them (treated as unknown, so
+    /// reconciliation errs toward re-applying raid state).
+    /// </summary>
+    public static string? GetRaidIdentity(EftRaidInfo? raid)
+    {
+        if (raid == null) return null;
+        if (!string.IsNullOrEmpty(raid.RaidId)) return raid.RaidId;
+        if (!string.IsNullOrEmpty(raid.SessionId)) return raid.SessionId;
+        return raid.StartTime?.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>Case-insensitive lookup returning the canonical key from the config list.</summary>

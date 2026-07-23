@@ -166,7 +166,9 @@ public sealed class EftRaidEventService : IDisposable
     private FileSystemWatcher? _applicationLogWatcher;
     private FileSystemWatcher? _networkLogWatcher;
     private readonly object _watcherLock = new();
-    private bool _isWatching;
+    // volatile: 쓰기는 _watcherLock 아래에서 일어나지만 IsMonitoring은 UI 스레드가
+    // 락 없이 읽는다 — 최신 값이 보이도록 보장한다
+    private volatile bool _isWatching;
     private bool _isDisposed;
 
     private readonly ConcurrentDictionary<string, long> _filePositions = new();
