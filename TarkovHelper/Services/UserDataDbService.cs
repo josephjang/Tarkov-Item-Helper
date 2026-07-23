@@ -1091,6 +1091,37 @@ public sealed class UserDataDbService
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// 동기 버전: 여러 설정 값을 하나의 연결/트랜잭션으로 저장합니다.
+    /// 함께 바뀌는 값(예: 맵 뷰 상태의 맵/줌/팬)이 부분적으로만 기록되는 것을 막고,
+    /// 키마다 연결을 새로 여는 왕복 비용을 없앱니다.
+    /// </summary>
+    public void SetSettings(IEnumerable<KeyValuePair<string, string>> settings)
+    {
+        if (!_isInitialized)
+            InitializeAsync().GetAwaiter().GetResult();
+
+        var connectionString = $"Data Source={_databasePath}";
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+
+        var sql = @"
+            INSERT INTO UserSettings (Key, Value)
+            VALUES (@key, @value)
+            ON CONFLICT(Key) DO UPDATE SET Value = @value";
+
+        foreach (var setting in settings)
+        {
+            using var cmd = new SqliteCommand(sql, connection, transaction);
+            cmd.Parameters.AddWithValue("@key", setting.Key);
+            cmd.Parameters.AddWithValue("@value", setting.Value);
+            cmd.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
     #endregion
 
     #region Profile Settings

@@ -185,7 +185,7 @@ public class MapSettings
             if (Math.Abs((_drawerWidth ?? DefaultDrawerWidth) - clampedValue) > 1)
             {
                 _drawerWidth = clampedValue;
-                SaveSetting(KeyMapDrawerWidth, clampedValue.ToString());
+                SaveSetting(KeyMapDrawerWidth, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -518,7 +518,7 @@ public class MapSettings
             if (Math.Abs((_markerScale ?? DefaultMarkerScale) - clampedValue) > 0.01)
             {
                 _markerScale = clampedValue;
-                SaveSetting(KeyMapMarkerScale, clampedValue.ToString());
+                SaveSetting(KeyMapMarkerScale, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -536,7 +536,7 @@ public class MapSettings
             if (Math.Abs((_markerOpacity ?? 100) - clampedValue) > 0.5)
             {
                 _markerOpacity = clampedValue;
-                SaveSetting(KeyMapMarkerOpacity, clampedValue.ToString());
+                SaveSetting(KeyMapMarkerOpacity, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -605,7 +605,7 @@ public class MapSettings
             if (Math.Abs((_labelScale ?? 1.0) - clampedValue) > 0.01)
             {
                 _labelScale = clampedValue;
-                SaveSetting(KeyMapLabelScale, clampedValue.ToString());
+                SaveSetting(KeyMapLabelScale, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -659,7 +659,7 @@ public class MapSettings
             if (Math.Abs((_extractNameSize ?? 16.0) - clampedValue) > 0.1)
             {
                 _extractNameSize = clampedValue;
-                SaveSetting(KeyMapExtractNameSize, clampedValue.ToString());
+                SaveSetting(KeyMapExtractNameSize, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -677,7 +677,7 @@ public class MapSettings
             if (Math.Abs((_questNameSize ?? 20.0) - clampedValue) > 0.1)
             {
                 _questNameSize = clampedValue;
-                SaveSetting(KeyMapQuestNameSize, clampedValue.ToString());
+                SaveSetting(KeyMapQuestNameSize, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -733,7 +733,7 @@ public class MapSettings
             if (Math.Abs((_trailThickness ?? 2.0) - clampedValue) > 0.1)
             {
                 _trailThickness = clampedValue;
-                SaveSetting(KeyMapTrailThickness, clampedValue.ToString());
+                SaveSetting(KeyMapTrailThickness, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -810,7 +810,7 @@ public class MapSettings
             if (Math.Abs((_clusterZoomThreshold ?? 50) - clampedValue) > 0.5)
             {
                 _clusterZoomThreshold = clampedValue;
-                SaveSetting(KeyMapClusterZoomThreshold, clampedValue.ToString());
+                SaveSetting(KeyMapClusterZoomThreshold, SettingsValue.FormatDouble(clampedValue));
             }
         }
     }
@@ -1115,7 +1115,7 @@ public class MapSettings
             if (Math.Abs((_lastZoomLevel ?? 1.0) - value) > 0.01)
             {
                 _lastZoomLevel = value;
-                SaveSetting(KeyMapLastZoomLevel, value.ToString());
+                SaveSetting(KeyMapLastZoomLevel, SettingsValue.FormatDouble(value));
             }
         }
     }
@@ -1132,7 +1132,7 @@ public class MapSettings
             if (Math.Abs((_lastTranslateX ?? 0) - value) > 1)
             {
                 _lastTranslateX = value;
-                SaveSetting(KeyMapLastTranslateX, value.ToString());
+                SaveSetting(KeyMapLastTranslateX, SettingsValue.FormatDouble(value));
             }
         }
     }
@@ -1149,8 +1149,53 @@ public class MapSettings
             if (Math.Abs((_lastTranslateY ?? 0) - value) > 1)
             {
                 _lastTranslateY = value;
-                SaveSetting(KeyMapLastTranslateY, value.ToString());
+                SaveSetting(KeyMapLastTranslateY, SettingsValue.FormatDouble(value));
             }
+        }
+    }
+
+    /// <summary>
+    /// Saves the whole map view state (map key + zoom + pan) atomically in one DB
+    /// round-trip. Change detection matches the individual property setters, so
+    /// unchanged values cost nothing; changed values are written together so a crash
+    /// can never leave a freshly-saved map key paired with another map's zoom/pan.
+    /// </summary>
+    public void SaveLastView(string? mapKey, double zoomLevel, double translateX, double translateY)
+    {
+        EnsureLoaded();
+
+        var changes = new List<KeyValuePair<string, string>>();
+
+        if (_lastSelectedMap != mapKey)
+        {
+            _lastSelectedMap = mapKey;
+            changes.Add(new(KeyMapLastSelectedMap, mapKey ?? ""));
+        }
+        if (Math.Abs((_lastZoomLevel ?? 1.0) - zoomLevel) > 0.01)
+        {
+            _lastZoomLevel = zoomLevel;
+            changes.Add(new(KeyMapLastZoomLevel, SettingsValue.FormatDouble(zoomLevel)));
+        }
+        if (Math.Abs((_lastTranslateX ?? 0) - translateX) > 1)
+        {
+            _lastTranslateX = translateX;
+            changes.Add(new(KeyMapLastTranslateX, SettingsValue.FormatDouble(translateX)));
+        }
+        if (Math.Abs((_lastTranslateY ?? 0) - translateY) > 1)
+        {
+            _lastTranslateY = translateY;
+            changes.Add(new(KeyMapLastTranslateY, SettingsValue.FormatDouble(translateY)));
+        }
+
+        if (changes.Count == 0) return;
+
+        try
+        {
+            _userDataDb.SetSettings(changes);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Save failed: {ex.Message}");
         }
     }
 
@@ -1222,7 +1267,7 @@ public class MapSettings
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapDrawerOpen), out var drawerOpen))
                 _drawerOpen = drawerOpen;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapDrawerWidth), out var drawerWidth))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapDrawerWidth), out var drawerWidth))
                 _drawerWidth = drawerWidth;
 
             // Extracts
@@ -1285,10 +1330,10 @@ public class MapSettings
             if (string.IsNullOrEmpty(_lastSelectedMap)) _lastSelectedMap = null;
 
             // Markers
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapMarkerScale), out var markerScale))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapMarkerScale), out var markerScale))
                 _markerScale = markerScale;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapMarkerOpacity), out var markerOpacity))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapMarkerOpacity), out var markerOpacity))
                 _markerOpacity = markerOpacity;
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapAutoHideCompleted), out var autoHideCompleted))
@@ -1300,7 +1345,7 @@ public class MapSettings
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowLabels), out var showLabels))
                 _showLabels = showLabels;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapLabelScale), out var labelScale))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapLabelScale), out var labelScale))
                 _labelScale = labelScale;
 
             if (int.TryParse(_userDataDb.GetSetting(KeyMapQuestMarkerSize), out var questMarkerSize))
@@ -1309,10 +1354,10 @@ public class MapSettings
             if (int.TryParse(_userDataDb.GetSetting(KeyMapPlayerMarkerSize), out var playerMarkerSize))
                 _playerMarkerSize = playerMarkerSize;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapExtractNameSize), out var extractNameSize))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapExtractNameSize), out var extractNameSize))
                 _extractNameSize = extractNameSize;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapQuestNameSize), out var questNameSize))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapQuestNameSize), out var questNameSize))
                 _questNameSize = questNameSize;
 
             // Quest display
@@ -1344,7 +1389,7 @@ public class MapSettings
             _trailColor = _userDataDb.GetSetting(KeyMapTrailColor);
             if (string.IsNullOrEmpty(_trailColor)) _trailColor = "#00FF00";
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapTrailThickness), out var trailThickness))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapTrailThickness), out var trailThickness))
                 _trailThickness = trailThickness;
 
             // Minimap
@@ -1358,7 +1403,7 @@ public class MapSettings
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapClusteringEnabled), out var clusteringEnabled))
                 _clusteringEnabled = clusteringEnabled;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapClusterZoomThreshold), out var clusterZoomThreshold))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapClusterZoomThreshold), out var clusterZoomThreshold))
                 _clusterZoomThreshold = clusterZoomThreshold;
 
             // Layers
@@ -1413,13 +1458,13 @@ public class MapSettings
             if (string.IsNullOrEmpty(_screenshotPath)) _screenshotPath = null;
 
             // View state
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapLastZoomLevel), out var lastZoomLevel))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapLastZoomLevel), out var lastZoomLevel))
                 _lastZoomLevel = lastZoomLevel;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapLastTranslateX), out var lastTranslateX))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapLastTranslateX), out var lastTranslateX))
                 _lastTranslateX = lastTranslateX;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyMapLastTranslateY), out var lastTranslateY))
+            if (SettingsValue.TryParseDouble(_userDataDb.GetSetting(KeyMapLastTranslateY), out var lastTranslateY))
                 _lastTranslateY = lastTranslateY;
         }
         catch (Exception ex)
