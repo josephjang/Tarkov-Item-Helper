@@ -99,6 +99,12 @@ public partial class MapPage : UserControl
     // 층 전환 관련 필드
     private string? _currentFloorId;
 
+    // 뷰 상태 유지 관련 필드 (feature-persist-map-view-state PRD)
+    // 이 페이지 인스턴스는 MainWindow가 캐시하므로 1회성 초기화는 한 번만 실행하고,
+    // 탭 재진입 시에는 이벤트 재구독 등 최소한의 재장전만 한다.
+    private bool _isInitialized;
+    private MapViewStatePersistence.MapView? _pendingViewRestore;
+
     // 리팩터링된 컴포넌트들
     private MapQuestMarkerManager? _questMarkerManager;
     private MapExtractMarkerManager? _extractMarkerManager;
@@ -211,41 +217,7 @@ public partial class MapPage : UserControl
     {
         try
         {
-            // 페이지 로드 시 Trail 초기화
-            _trackerService?.ClearTrail();
-            TrailPath.Points.Clear();
-
-            LoadSettings();
-
-            // 리팩터링된 컴포넌트 초기화
-            InitializeComponents();
-
-            PopulateMapComboBox();
-
-            // 레이드 이벤트 모니터링 시작 (자동 맵 전환 및 레이드 감지용)
-            StartRaidEventMonitoring();
-
-            // 로그에서 맵이 감지되지 않은 경우에만 저장된 맵 상태 복원
-            RestoreMapState();
-
-            UpdateUI();
-
-            // 퀘스트 목표 데이터 로드
-            await LoadQuestObjectivesAsync();
-
-            // 탈출구 데이터 로드
-            await LoadExtractsAsync();
-
-            // Map Markers 데이터 로드
-            await LoadMapMarkersAsync();
-
-            // 층 감지 데이터 로드 (자동 층 전환용)
-            await FloorDetectionService.Instance.LoadFloorRangesAsync();
-
-            // Drawer 기본 열기 및 내용 새로고침
-            OpenQuestDrawer();
-
-            // 퀘스트 진행 상태 변경 이벤트 구독
+            // 탭 진입마다: Unloaded에서 해제한 이벤트/훅 재구독
             _progressService.ProgressChanged += OnQuestProgressChanged;
             _progressService.ObjectiveProgressChanged += OnObjectiveProgressChanged;
 
@@ -253,11 +225,77 @@ public partial class MapPage : UserControl
             GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
             GlobalKeyboardHookService.Instance.IsEnabled = true;
 
-            // 오버레이 미니맵 서비스 초기화
-            await InitializeOverlayServiceAsync();
+            // 레이드 이벤트 모니터링 시작 (자동 맵 전환 및 레이드 감지용)
+            StartRaidEventMonitoring();
+
+            UpdateUI();
+
+            // 1회성 초기화: 페이지 인스턴스가 캐시되므로 탭 재진입 시에는 건너뛴다.
+            // 덕분에 맵/줌/팬/층/궤적/드로어 상태가 탭 전환에서 그대로 살아남는다.
+            if (!_isInitialized)
+            {
+                // await 중 탭을 떠났다 돌아와 Loaded가 다시 발화해도 재진입하지 않도록 먼저 세운다
+                _isInitialized = true;
+
+                // 최초 로드 시 Trail 초기화
+                _trackerService?.ClearTrail();
+                TrailPath.Points.Clear();
+
+                LoadSettings();
+
+                // 리팩터링된 컴포넌트 초기화
+                InitializeComponents();
+
+                // 초기 맵 결정: 진행 중 레이드 > 저장된 마지막 맵 > 첫 번째 맵
+                var settingsService = SettingsService.Instance;
+                var choice = MapViewStatePersistence.DecideInitialMap(
+                    settingsService.MapLastSelectedMap,
+                    _trackerService?.GetAllMapKeys() ?? Array.Empty<string>(),
+                    MapViewStatePersistence.GetActiveRaidMapKey(_raidEventService.CurrentRaid));
+
+                if (choice?.Source == MapViewStatePersistence.MapChoiceSource.Saved)
+                {
+                    // 저장된 줌/팬은 맵 선택 직후 CmbMapSelect_SelectionChanged에서 적용된다
+                    _pendingViewRestore = MapViewStatePersistence.ValidateView(
+                        settingsService.MapLastZoomLevel,
+                        settingsService.MapLastTranslateX,
+                        settingsService.MapLastTranslateY,
+                        MinZoom, MaxZoom);
+                }
+
+                PopulateMapComboBox(choice?.MapKey);
+
+                if (choice?.Source == MapViewStatePersistence.MapChoiceSource.ActiveRaid)
+                {
+                    // 레이드로 결정된 맵: 맵별 저장 줌 적용 + 중앙 정렬 (HandleRaidStarted와 동일)
+                    SetZoom(LoadMapZoomLevel(choice.MapKey));
+                    CenterMapInView();
+                }
+
+                // 퀘스트 목표 데이터 로드
+                await LoadQuestObjectivesAsync();
+
+                // 탈출구 데이터 로드
+                await LoadExtractsAsync();
+
+                // Map Markers 데이터 로드
+                await LoadMapMarkersAsync();
+
+                // 층 감지 데이터 로드 (자동 층 전환용)
+                await FloorDetectionService.Instance.LoadFloorRangesAsync();
+
+                // Drawer 기본 열기 및 내용 새로고침
+                OpenQuestDrawer();
+
+                // 오버레이 미니맵 서비스 초기화
+                await InitializeOverlayServiceAsync();
+            }
 
             // 자동 Tracking 시작 (Map 탭 활성화 시)
             StartAutoTracking();
+
+            // 페이지가 언로드된 동안 시작된 레이드 반영
+            ReconcileActiveRaid();
         }
         catch (Exception ex)
         {
@@ -267,14 +305,13 @@ public partial class MapPage : UserControl
 
     private void MapTrackerPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        // 현재 맵 상태 저장
-        SaveMapState();
+        // 현재 맵 뷰 상태 저장
+        PersistViewState();
 
-        // 이벤트 구독 해제
+        // 이벤트 구독 해제 (DataRefreshed는 생성자 구독을 페이지 수명 내내 유지한다 —
+        // 여기서 해제하면 재진입 시 재구독 없이 DB 갱신이 마커에 반영되지 않는다)
         _progressService.ProgressChanged -= OnQuestProgressChanged;
         _progressService.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
-        MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-        QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
 
         // Global Keyboard Hook 중지
         GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
@@ -290,9 +327,17 @@ public partial class MapPage : UserControl
         StopRaidEventMonitoring();
     }
 
-    private void SaveMapState()
+    /// <summary>
+    /// 현재 맵 뷰 상태(맵/줌/팬)를 SettingsService(DB)에 저장합니다.
+    /// Unloaded와 MainWindow 종료 시 호출됩니다 — WPF는 앱 종료 시 Unloaded를
+    /// 보장하지 않으므로 종료 훅이 백스톱 역할을 한다. setter에 변경 감지가 있어
+    /// 중복 호출은 저렴한 no-op입니다.
+    /// </summary>
+    public void PersistViewState()
     {
-        // 모든 설정을 SettingsService(DB)에 저장
+        // 초기화 전(맵 미선택) 상태는 저장하지 않는다 — 저장된 값을 빈 값으로 덮지 않기 위함
+        if (string.IsNullOrEmpty(_currentMapKey)) return;
+
         var settingsService = SettingsService.Instance;
 
         settingsService.MapLastSelectedMap = _currentMapKey;
@@ -315,36 +360,6 @@ public partial class MapPage : UserControl
             // 퀘스트 마커 갱신
             RefreshQuestMarkers();
         });
-    }
-
-    private void RestoreMapState()
-    {
-        // SettingsService(DB)에서 맵 상태 복원
-        var settingsService = SettingsService.Instance;
-
-        // 로그에서 이미 맵이 감지되어 선택된 경우 맵 선택 건너뜀
-        // _currentMapKey가 없는 경우에만 저장된 맵 복원
-        var lastSelectedMap = settingsService.MapLastSelectedMap;
-        if (string.IsNullOrEmpty(_currentMapKey) && !string.IsNullOrEmpty(lastSelectedMap))
-        {
-            // 맵 선택 복원
-            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
-            {
-                if (CmbMapSelect.Items[i] is ComboBoxItem item &&
-                    string.Equals(item.Tag as string, lastSelectedMap, StringComparison.OrdinalIgnoreCase))
-                {
-                    CmbMapSelect.SelectedIndex = i;
-                    break;
-                }
-            }
-
-            // 마지막 맵 복원 시 100% 배율로 리셋
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                SetZoom(1.0);
-                CenterMapInView();
-            }), System.Windows.Threading.DispatcherPriority.Loaded);
-        }
     }
 
     private void OnLanguageChanged(object? sender, AppLanguage e)
@@ -556,7 +571,13 @@ public partial class MapPage : UserControl
         }
     }
 
-    private void PopulateMapComboBox()
+    /// <summary>
+    /// 맵 콤보박스를 채우고 초기 선택을 적용합니다. selectKey가 주어지면 해당 맵을
+    /// 선택하고(대소문자 무시), 없거나 목록에 없으면 첫 번째 맵으로 폴백합니다 —
+    /// 첫 항목 기본값은 복원 결정의 폴백으로만 쓰인다 (index-0을 먼저 적용하면
+    /// 저장된 맵 복원이 막히는 회귀가 재발한다).
+    /// </summary>
+    private void PopulateMapComboBox(string? selectKey = null)
     {
         if (_trackerService == null) return;
         CmbMapSelect.Items.Clear();
@@ -570,8 +591,22 @@ public partial class MapPage : UserControl
             });
         }
 
-        if (CmbMapSelect.Items.Count > 0)
-            CmbMapSelect.SelectedIndex = 0;
+        if (CmbMapSelect.Items.Count == 0) return;
+
+        var selectIndex = 0;
+        if (!string.IsNullOrEmpty(selectKey))
+        {
+            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+            {
+                if (CmbMapSelect.Items[i] is ComboBoxItem item &&
+                    string.Equals(item.Tag as string, selectKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectIndex = i;
+                    break;
+                }
+            }
+        }
+        CmbMapSelect.SelectedIndex = selectIndex;
     }
 
     private void UpdateUI()
@@ -733,9 +768,15 @@ public partial class MapPage : UserControl
         // 이벤트 구독
         _raidEventService.RaidEvent += OnRaidEvent;
 
-        // Settings에서 설정된 로그 폴더 경로 사용
-        var logFolderPath = SettingsService.Instance.LogFolderPath;
-        _raidEventService.StartMonitoring(logFolderPath);
+        // 모니터링은 보통 앱 전역에서 이미 실행 중이다 (MainWindow.AutoStartLogMonitoring).
+        // 실행 중이 아닐 때만 시작해, 탭 진입마다 전역 FileSystemWatcher를
+        // 헐어내고 재생성하는 낭비(및 이벤트 누락 틈)를 없앤다.
+        if (!_raidEventService.IsMonitoring)
+        {
+            // Settings에서 설정된 로그 폴더 경로 사용
+            var logFolderPath = SettingsService.Instance.LogFolderPath;
+            _raidEventService.StartMonitoring(logFolderPath);
+        }
     }
 
     /// <summary>
@@ -798,6 +839,16 @@ public partial class MapPage : UserControl
             return;
         }
 
+        SwitchToRaidMap(mapKey, raidType);
+    }
+
+    /// <summary>
+    /// 레이드에서 감지된 맵으로 전환합니다: 이전 맵의 줌 저장, Trail 초기화,
+    /// 맵 선택 변경, 맵별 저장 줌 적용, 중앙 정렬, 상태 표시.
+    /// HandleRaidStarted(라이브 이벤트)와 ReconcileActiveRaid(탭 재진입)가 공유합니다.
+    /// </summary>
+    private void SwitchToRaidMap(string mapKey, RaidType raidType)
+    {
         // 맵 콤보박스에서 해당 맵 찾기
         for (int i = 0; i < CmbMapSelect.Items.Count; i++)
         {
@@ -828,6 +879,25 @@ public partial class MapPage : UserControl
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// 탭 재진입 시, 페이지가 언로드되어 RaidEvent를 놓친 동안 시작된 레이드를
+    /// 반영합니다. 진행 중 레이드의 맵이 현재 맵과 다르면 그 맵으로 전환하고,
+    /// 같거나 레이드가 없으면 아무것도 하지 않습니다 (Trail·뷰 보존).
+    /// </summary>
+    private void ReconcileActiveRaid()
+    {
+        var raidMapKey = MapViewStatePersistence.GetActiveRaidMapKey(_raidEventService.CurrentRaid);
+        if (raidMapKey == null ||
+            string.Equals(_currentMapKey, raidMapKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var raidType = _raidEventService.CurrentRaid?.RaidType ?? RaidType.Unknown;
+        ApplyRaidTypeExtracts(raidType);
+        SwitchToRaidMap(raidMapKey, raidType);
     }
 
     /// <summary>
@@ -1036,6 +1106,10 @@ public partial class MapPage : UserControl
             _currentMapKey = mapKey;
             _trackerService?.SetCurrentMap(mapKey);
 
+            // 마지막 선택 맵 즉시 저장 — Unloaded/종료 시점에만 의존하면 강제 종료 시
+            // 유실된다. setter의 변경 감지 덕에 같은 값 재선택은 no-op.
+            SettingsService.Instance.MapLastSelectedMap = mapKey;
+
             // 맵 변경 시 Trail 초기화
             _trackerService?.ClearTrail();
             TrailPath.Points.Clear();
@@ -1045,7 +1119,23 @@ public partial class MapPage : UserControl
             // 층 콤보박스 업데이트
             UpdateFloorComboBox(mapKey);
 
-            LoadMapImage(mapKey);
+            // 저장된 뷰(줌/팬) 복원이 대기 중이면 중앙 정렬 대신 그 뷰를 적용한다.
+            // centerView: false — CenterMapInView는 뷰어가 미측정이면 자신을 지연
+            // 재호출하므로, 중앙 정렬을 태우면 복원된 팬을 나중에 덮어써 버린다.
+            var pendingView = _pendingViewRestore;
+            _pendingViewRestore = null;
+            if (pendingView != null)
+            {
+                LoadMapImage(mapKey, centerView: false);
+                // SetZoom은 LoadMapImage 이후: 마커 역스케일이 로드된 캔버스에 적용된다
+                SetZoom(pendingView.ZoomLevel);
+                MapTranslate.X = pendingView.TranslateX;
+                MapTranslate.Y = pendingView.TranslateY;
+            }
+            else
+            {
+                LoadMapImage(mapKey);
+            }
             LoadCurrentMapSettings();
 
             // 맵별 마커 스케일 적용 (플레이어 마커 크기 업데이트)
