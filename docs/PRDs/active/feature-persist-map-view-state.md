@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Status**: Planning
+- **Status**: In Progress (Phase 1 implemented; unit + e2e green; PR pending)
 - **Created**: 2026-07-23
-- **Updated**: 2026-07-23
+- **Updated**: 2026-07-24
 - **Owner**: josephjang
 - **Translations**: Korean companion at `feature-persist-map-view-state.ko.md` (kept in sync 1:1)
 
@@ -87,16 +87,17 @@ the rest. Any future page added to the tab cache must follow them too.
 
 ## Goals (Phase 1 — Map tab)
 
-- [ ] Goal 1: Returning to the Map tab shows the **same map, zoom, and pan** as when the
+- [x] Goal 1: Returning to the Map tab shows the **same map, zoom, and pan** as when the
       user left it.
-- [ ] Goal 2: Relaunching the app restores the **last viewed map, zoom, and pan** (the
+- [x] Goal 2: Relaunching the app restores the **last viewed map, zoom, and pan** (the
       save infrastructure already exists; restore is the missing half).
-- [ ] Goal 3: **Raid detection wins**: if a raid is live (detected via
+- [x] Goal 3: **Raid detection wins**: if a raid is live (detected via
       `EftRaidEventService`), the detected map takes precedence over the saved map — both
       at first load and when a raid started while the user was on another tab.
-- [ ] Goal 4: **First run** (no saved value) keeps today's behavior: first configured map,
+      *(unit-tested; manual check with a live game pending)*
+- [x] Goal 4: **First run** (no saved value) keeps today's behavior: first configured map,
       100% zoom, centered.
-- [ ] Goal 5: Structural side effects of the idempotent-`Loaded` fix: floor, trail,
+- [x] Goal 5: Structural side effects of the idempotent-`Loaded` fix: floor, trail,
       drawer state, and marker-manager identity survive tab switches; the `DataRefreshed`
       dead-subscription bug and the per-entry `FileSystemWatcher` churn are fixed.
 
@@ -121,17 +122,21 @@ the rest. Any future page added to the tab cache must follow them too.
 
 ## Requirements / Acceptance Criteria
 
-- [ ] R1 (tab round-trip): Select map M, zoom/pan → switch tab → return: map M with the
-      same zoom/pan; floor, trail, and drawer state intact.
-- [ ] R2 (restart round-trip): Select map M, zoom/pan → close app → relaunch → Map tab:
-      map M restored with saved zoom/pan.
-- [ ] R3 (raid precedence): With a live raid on map R, first Map-tab load shows R (not the
+- [x] R1 (tab round-trip): Select map M, zoom/pan → switch tab → return: map M with the
+      same zoom/pan; floor, trail, and drawer state intact. *(map selection e2e-verified;
+      zoom/pan/floor/trail survive structurally — no re-init on re-entry)*
+- [x] R2 (restart round-trip): Select map M, zoom/pan → close app → relaunch → Map tab:
+      map M restored with saved zoom/pan. *(e2e: seeded map + view restored and re-saved
+      unchanged)*
+- [x] R3 (raid precedence): With a live raid on map R, first Map-tab load shows R (not the
       saved map); a raid starting while on another tab switches the map on return.
-- [ ] R4 (first run): No saved value → first configured map, 100% zoom, centered.
-- [ ] R5 (resilience): A saved map key no longer in `map_configs.json`, or non-finite
+      *(unit-tested via `DecideInitialMap`/`GetActiveRaidMapKey`; not e2e-drivable)*
+- [x] R4 (first run): No saved value → first configured map, 100% zoom, centered. *(e2e)*
+- [x] R5 (resilience): A saved map key no longer in `map_configs.json`, or non-finite
       zoom/pan values, fall back to defaults — never a crash or a blank map.
-- [ ] R6 (no clobber): Tab switching alone never overwrites the saved map with a
-      reset value.
+      *(unit-tested fallback rules)*
+- [x] R6 (no clobber): Tab switching alone never overwrites the saved map with a
+      reset value. *(e2e: pre-fix these tests fail — Woods shown, null/reset persisted)*
 
 ## Technical Decisions
 
@@ -148,9 +153,9 @@ the rest. Any future page added to the tab cache must follow them too.
 
 ### Phase 1: Map view-state restore (this PRD)
 
-- [ ] Task 1.1: Add pure decision core
+- [x] Task 1.1: Add pure decision core
   - Files: `TarkovHelper/Services/Map/MapViewStatePersistence.cs` (new)
-- [ ] Task 1.2: Make `MapTrackerPage_Loaded` idempotent — split one-time init (settings,
+- [x] Task 1.2: Make `MapTrackerPage_Loaded` idempotent — split one-time init (settings,
       marker managers, map decision + `PopulateMapComboBox(selectKey)`, data loads, drawer,
       overlay) from per-visit re-arm (progress/keyboard/raid event re-subscription,
       `StartAutoTracking`, `ReconcileActiveRaid`); parameterize `PopulateMapComboBox` so
@@ -160,18 +165,18 @@ the rest. Any future page added to the tab cache must follow them too.
       `StartMonitoring` with `IsMonitoring`; extract `SwitchToRaidMap(...)` from
       `HandleRaidStarted` and add `ReconcileActiveRaid()`
   - Files: `TarkovHelper/Pages/Map/MapPage.xaml.cs`
-- [ ] Task 1.3: Shutdown backstop — persist map view state from window close
+- [x] Task 1.3: Shutdown backstop — persist map view state from window close
   - Files: `TarkovHelper/MainWindow.xaml.cs` (`OnWindowClosing`: `_mapTrackerPage?.PersistViewState();`)
 
 ### Phase 1 tests
 
-- [ ] Task 1.4: Unit tests for the decision core (~10): saved-key happy path; case-mismatch
+- [x] Task 1.4: Unit tests for the decision core (~10): saved-key happy path; case-mismatch
       returns canonical key; saved key missing from configs → first-map fallback; first run
       → first map; live raid beats saved; unknown raid key ignored; empty key list → null;
       `GetActiveRaidMapKey` per raid state (null/Ended/Matching/InRaid/empty MapKey);
       `ValidateView` round-trip, zoom clamping at both ends, NaN/Infinity rejection
   - Files: `TarkovHelper.Tests/MapViewStatePersistenceTests.cs` (new)
-- [ ] Task 1.5: E2E tests — extract the shared app driver (`App`/`Win32`/`E2EFact`) from
+- [x] Task 1.5: E2E tests — extract the shared app driver (`App`/`Win32`/`E2EFact`) from
       `MainWindowBoundsE2ETests.cs` into a reusable harness; drive tabs and read the map
       combo via UI Automation (WPF exposes `x:Name` — `TabMap`/`TabQuests`/`CmbMapSelect` —
       as AutomationId). Cases: seeded map restored on launch **and not clobbered** on
@@ -188,18 +193,21 @@ the rest. Any future page added to the tab cache must follow them too.
 | Date | Update | By |
 |------|--------|-----|
 | 2026-07-23 | PRD created from root-cause analysis: cached MapPage's `Loaded` re-runs full init each tab entry; `PopulateMapComboBox` forces index 0 (Woods) before `RestoreMapState`, whose `IsNullOrEmpty(_currentMapKey)` guard then always fails (dead code); the reset value is then saved, clobbering the real last map. Generalized into the five improvement principles; design decided (idempotent `Loaded`, pure `MapViewStatePersistence` core, raid > saved > default precedence, save-on-change + `Closing` backstop). | josephjang |
+| 2026-07-24 | Phase 1 implemented per Tasks 1.1–1.3 (pure core; idempotent `Loaded` with per-visit re-arm + `ReconcileActiveRaid`; `SwitchToRaidMap` extracted; save-on-change in `SelectionChanged`; `OnWindowClosing` backstop; `RestoreMapState` deleted; `DataRefreshed` unsubscribe and watcher churn removed). Tests per Tasks 1.4–1.5: 28 unit tests + 3 e2e (UIA tab driving worked; the shared harness was extracted from the bounds tests). E2e validated against the pre-fix app: all 3 fail there — including the discovery that pre-fix, closing the app while on the Map tab persisted **nothing** (`Unloaded` doesn't fire on window close), so the `Closing` backstop fixes a second latent loss, not just a theoretical one. Harness hardening: loading UI Automation flips the test host DPI-aware mid-run, which broke the bounds e2e coordinate assumptions on a 200% display — the host's DPI awareness is now pinned per-monitor-v2 up front and `GetWindowRect` normalizes physical px to WPF units. Full suite 71 passed / 1 skipped (pre-existing skip). Also fixed a pre-existing CS1998 in `MainWindow.BtnClearAllData_Click`. | josephjang |
 
 ## Completion Criteria
 
-- [ ] All Goals and Requirements (R1–R6) met
-- [ ] Build green (`dotnet build`)
-- [ ] Unit guard: `MapViewStatePersistenceTests` protect the decision/validation rules
-- [ ] E2E: `MapStateE2ETests` verify restore-on-launch, tab-switch survival, and
+- [x] All Goals and Requirements (R1–R6) met *(R3 live-game manual check pending)*
+- [x] Build green (`dotnet build`)
+- [x] Unit guard: `MapViewStatePersistenceTests` protect the decision/validation rules
+      (28 tests)
+- [x] E2E: `MapStateE2ETests` verify restore-on-launch, tab-switch survival, and
       no-clobber against the real app in an isolated Config dir
-      (filter out of quick runs with `dotnet test --filter Category!=E2E`)
-- [ ] Manual checks: tab round-trip with zoom/pan; restart round-trip; raid auto-switch
-      still works (start a raid with the app open); first-run defaults; corrupt/unknown
-      saved key falls back cleanly (by editing `user_data.db`)
+      (filter out of quick runs with `dotnet test --filter Category!=E2E`);
+      validated to fail against the pre-fix app
+- [ ] Manual checks: raid auto-switch still works with a live game (start a raid with
+      the app open) — the only check not covered by automation; tab/restart round-trips,
+      first-run defaults, and invalid-value fallbacks are e2e/unit-covered above
 
 ## Risks & Mitigations
 
