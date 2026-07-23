@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Status**: Review (구현 + 검증 완료; josephjang/Tarkov-Item-Helper에 PR #7 오픈)
+- **Status**: Completed (PR #7 main에 rebase merge됨, 2026-07-23)
 - **Created**: 2026-07-20
-- **Updated**: 2026-07-20
+- **Updated**: 2026-07-23
 - **Owner**: josephjang
 - **Translations**: 영문 원본 `feature-persist-window-bounds.prd` (1:1 동기화 유지, 충돌 시 영문 기준)
 
@@ -73,6 +73,7 @@
 | 2026-07-20 | `MainWindow.xaml.cs`에 구현(생성자에서 복원, SourceInitialized에서 최대화, Closing에서 저장). 빌드 성공. 실행 앱 구동으로 검증(관리자 매니페스트 우회를 위해 `dotnet TarkovHelper.dll`로 실행, Win32로 창 이동/최대화/최소화, 실행 간 DB 확인): 최초 실행 기본값, 일반 왕복, RestoreBounds 포함 최대화 왕복, 최소화 종료 → 일반, 화면 밖 DB 값 → 중앙 기본값, 손상 JSON → 경고 로그 + 기본값 + 다음 종료 시 자가 복구. 보류: 실제 멀티 모니터 확인, F11 전체화면 종료. | josephjang |
 | 2026-07-20 | 순수 로직을 `Services/WindowBoundsPersistence.cs`로 추출(동작 동일; MainWindow는 Window/SystemParameters/저장소 연결만 담당)하고 `WindowBoundsPersistenceTests`(11개) 추가 — 왕복, 최대화/최소화 시 RestoreBounds, 화면 밖/보조 모니터 검증, 클램핑, JSON 계약을 가드. 테스트 34 통과 / 1 건너뜀. 리팩터링 후 실행 앱으로 스모크 왕복 재검증. | josephjang |
 | 2026-07-20 | `MainWindowBoundsE2ETests`(6개) 추가: 실제 앱을 일회용 Config 디렉터리로 실행(`AppEnv`에 새 `TARKOVHELPER_CONFIG_PATH` 환경 변수 오버라이드)하고 Win32로 실제 창을 구동, 화면상 geometry + 저장된 DB를 검증. 최초 실행 기본값, 복원 왕복, 최대화 재실행 + 최대화 해제, 최소화 종료 → 일반, 화면 밖 폴백, 손상 값 자가 복구 커버. R1/R4(최소화)/R5 및 R3 폴백이 이제 e2e로 상시 검증됨; 테스트 40 통과 / 1 건너뜀, 약 8초. | josephjang |
+| 2026-07-23 | PR #7 main에 rebase merge됨; PRD를 Completed로 변경하고 아카이브. R3(실제 보조 모니터)와 R4(F11 전체화면 종료)는 하드웨어 확인 보류 상태로 남음 — 설계상 커버되며, 화면 밖 폴백과 최소화 종료 절반은 검증 완료. | josephjang |
 
 ## Completion Criteria
 
@@ -96,10 +97,21 @@
 
 ---
 
-## Archive Info (완료 시 작성)
+## Archive Info
 
-- **Completed**: YYYY-MM-DD
-- **Summary**:
-- **Actual vs Planned**:
-- **Lessons Learned**:
-- **Follow-up Items**:
+- **Completed**: 2026-07-23 (PR #7 main에 rebase merge됨)
+- **Summary**: 메인 윈도우의 크기/위치/최대화 상태가 이제 단일 `app.mainWindowBounds`
+  JSON 설정으로 실행 간에 유지됨. 순수 로직은 `Services/WindowBoundsPersistence.cs`로
+  추출; 단위 테스트 11개와, 격리된 Config 디렉터리(`TARKOVHELPER_CONFIG_PATH`)에서
+  실제 앱을 실행하는 e2e 테스트 6개로 가드.
+- **Actual vs Planned**: 구현은 3개 Task 계획과 일치. 테스트에서 계획을 넘어 확장:
+  순수 코어 추출, 단위 테스트 스위트, Win32 구동 e2e harness는 사전 계획이 아니라
+  세션 중에 추가됨.
+- **Lessons Learned**: 생성자에서 복원 / `SourceInitialized`에서 최대화 적용이
+  깜빡임 없고 멀티 모니터에 올바른 분리다. geometry에는 종료 시점 저장만으로 충분.
+  `dotnet TarkovHelper.dll`로 실행하면 관리자 매니페스트를 우회해 실제 앱 e2e가
+  실용적이 된다.
+- **Follow-up Items**: R3 실제 보조 모니터와 R4 F11 전체화면 종료 확인은
+  하드웨어/시나리오가 갖춰질 때 (설계상 커버됨; 폴백은 검증 완료).
+  `MainWindowBoundsE2ETests.cs`의 e2e harness는 `feature-persist-map-view-state.prd`에서
+  추출/재사용 예정.
