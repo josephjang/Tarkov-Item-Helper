@@ -7,7 +7,7 @@
 - **Updated**: 2026-06-20
 - **Owner**: josephjang
 - **Related Agents**: wpf-xaml-specialist, service-architect
-- **Translations**: Korean companion at `feature-hideout-localized-sort.ko.prd` (kept in sync 1:1)
+- **Translations**: Korean companion at `feature-hideout-localized-sort.ko.md` (kept in sync 1:1)
 - **Wording convention**: this English PRD describes orderings in English (Hangul collation, kana/gojuon order) and uses full language names (English / Korean / Japanese) or locale codes (ko-KR / ja-JP). Code identifiers (`AppLanguage.KO`, `NameKO`) are unchanged.
 
 ## Problem Statement

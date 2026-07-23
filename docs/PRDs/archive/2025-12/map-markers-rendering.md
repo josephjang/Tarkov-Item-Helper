@@ -285,6 +285,6 @@ MapPage
   `Pages/Map/Components/MapMarkersManager.cs` was created matching this PRD's Phase 2
   design almost exactly. The PRD's checkboxes were simply never updated to reflect it.
 - **Actual vs Planned**: Matches plan.
-- **Lessons Learned**: Same as `fix-map-quest-objectives.prd` — implemented-but-never-
+- **Lessons Learned**: Same as `fix-map-quest-objectives.md` — implemented-but-never-
   closed-out PRDs are why the staleness rule was added to `docs/PRDs/README.md`.
 - **Follow-up Items**: None known.

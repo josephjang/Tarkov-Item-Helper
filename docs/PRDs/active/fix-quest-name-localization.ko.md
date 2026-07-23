@@ -1,6 +1,6 @@
 # 퀘스트명 현지화(KO/JA) — 근본 원인 해결 PRD
 
-> 이 문서는 영문 정본 `fix-quest-name-localization.prd`의 한국어 번역본입니다 (1:1 대응).
+> 이 문서는 영문 정본 `fix-quest-name-localization.md`의 한국어 번역본입니다 (1:1 대응).
 > 내용 충돌 시 영문 정본을 기준으로 합니다.
 
 ## Overview
@@ -10,7 +10,7 @@
 - **Updated**: 2026-06-13
 - **Owner**: josephjang
 - **Related Agents**: db-schema-analyzer, service-architect, wpf-xaml-specialist
-- **원문(정본)**: `fix-quest-name-localization.prd` (영문, 1:1 동기화 유지)
+- **원문(정본)**: `fix-quest-name-localization.md` (영문, 1:1 동기화 유지)
 - **범위 주의**: 이 결함은 특정 언어에 국한되지 않는 **일반적 현지화 문제**로, 앱이 지원하는 모든
   비영어 언어(현재 한국어·일본어)에 동일하게 적용된다. 한국어는 처음 보고된 증상이라 예시로 사용할
   뿐, 모든 수정은 `NameJA`/JA에도 똑같이 적용된다. 근본 원인은 **TarkovDBEditor** 데이터 파이프라인과

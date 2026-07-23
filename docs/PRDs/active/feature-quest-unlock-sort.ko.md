@@ -6,7 +6,7 @@
 - **Created**: 2026-07-02
 - **Updated**: 2026-07-02
 - **Owner**: josephjang
-- **Translations**: 영문 원본은 `feature-quest-unlock-sort.prd` (1:1 동기화 유지)
+- **Translations**: 영문 원본은 `feature-quest-unlock-sort.md` (1:1 동기화 유지)
 - **표기 규칙**: 영문 PRD는 정렬 순서를 영어로 기술하며, 언어는 전체 명칭(English / Korean /
   Japanese)으로 표기합니다. 본 PRD는 **구현 독립적**입니다 — 요구되는 *행위*를 규정할 뿐,
   어떻게 구현하는지는 규정하지 않습니다.

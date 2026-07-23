@@ -7,7 +7,7 @@
 - **Updated**: 2026-06-20
 - **Owner**: josephjang
 - **Related Agents**: wpf-xaml-specialist, service-architect
-- **Translations**: 영문 원본은 `feature-hideout-localized-sort.prd` (1:1 동기화 유지)
+- **Translations**: 영문 원본은 `feature-hideout-localized-sort.md` (1:1 동기화 유지)
 - **표기 규칙**: 영문 PRD는 정렬 순서를 영어로 기술(Hangul collation, kana/gojuon order)하고 한글을 쓰지 않습니다. 본 한글 PRD는 한국어로 작성합니다. 코드 식별자(`AppLanguage.KO`, `NameKO`)는 그대로 둡니다.
 
 ## 문제 정의 (Problem Statement)

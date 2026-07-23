@@ -6,7 +6,7 @@
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-23
 - **Owner**: josephjang
-- **Translations**: 영문 원본 `feature-persist-map-view-state.prd` (1:1 동기화 유지; 내용 충돌 시 영문이 기준)
+- **Translations**: 영문 원본 `feature-persist-map-view-state.md` (1:1 동기화 유지; 내용 충돌 시 영문이 기준)
 
 ## Problem Statement
 

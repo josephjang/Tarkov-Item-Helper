@@ -7,7 +7,7 @@ Document Version: 1.0
 Created: 2025-12-15
 Author: Senior PM / UX Lead / Tech Lead
 Target Application: TarkovHelper (WPF .NET 8)
-Location: TarkovHelper/docs/MapUIUX_Redesign.prd
+Location: TarkovHelper/docs/MapUIUX_Redesign.md
 
 ================================================================================
 1. EXECUTIVE SUMMARY

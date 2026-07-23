@@ -6,7 +6,7 @@
 - **Created**: 2026-07-20
 - **Updated**: 2026-07-23
 - **Owner**: josephjang
-- **Translations**: 영문 원본 `feature-persist-window-bounds.prd` (1:1 동기화 유지, 충돌 시 영문 기준)
+- **Translations**: 영문 원본 `feature-persist-window-bounds.md` (1:1 동기화 유지, 충돌 시 영문 기준)
 
 ## Problem Statement
 
@@ -113,5 +113,5 @@
   실용적이 된다.
 - **Follow-up Items**: R3 실제 보조 모니터와 R4 F11 전체화면 종료 확인은
   하드웨어/시나리오가 갖춰질 때 (설계상 커버됨; 폴백은 검증 완료).
-  `MainWindowBoundsE2ETests.cs`의 e2e harness는 `feature-persist-map-view-state.prd`에서
+  `MainWindowBoundsE2ETests.cs`의 e2e harness는 `feature-persist-map-view-state.md`에서
   추출/재사용 예정.
