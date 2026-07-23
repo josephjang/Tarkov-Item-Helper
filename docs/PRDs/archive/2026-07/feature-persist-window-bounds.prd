@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Status**: Review (implemented + verified; PR #7 open on josephjang/Tarkov-Item-Helper)
+- **Status**: Completed (PR #7 rebase-merged to main, 2026-07-23)
 - **Created**: 2026-07-20
-- **Updated**: 2026-07-20
+- **Updated**: 2026-07-23
 - **Owner**: josephjang
 - **Translations**: Korean companion at `feature-persist-window-bounds.ko.prd` (kept in sync 1:1)
 
@@ -76,6 +76,7 @@ window should too.
 | 2026-07-20 | Implemented in `MainWindow.xaml.cs` (restore in ctor, maximize at SourceInitialized, save on Closing). Build green. Verified by driving the running app (launched via `dotnet TarkovHelper.dll` to skip the admin manifest, window moved/maximized/minimized via Win32, DB inspected between runs): first-run defaults, normal round-trip, maximized round-trip incl. RestoreBounds, minimized close → normal, off-screen DB value → centered defaults, corrupt JSON → warning logged + defaults + self-heals on next close. Pending: physical multi-monitor check, F11-fullscreen close. | josephjang |
 | 2026-07-20 | Extracted the pure core into `Services/WindowBoundsPersistence.cs` (same behavior; MainWindow now only wires Window/SystemParameters/storage) and added `WindowBoundsPersistenceTests` (11) guarding round-trips, RestoreBounds-on-maximized/minimized, off-screen/secondary-monitor validation, clamping, and the JSON contract. Suite 34 passed / 1 skipped. Post-refactor smoke round-trip re-verified on the running app. | josephjang |
 | 2026-07-20 | Added `MainWindowBoundsE2ETests` (6): launch the real app against a throwaway Config dir (new `TARKOVHELPER_CONFIG_PATH` env override in `AppEnv`), drive the actual window via Win32, assert on-screen geometry + persisted DB. Covers first-run defaults, restore round-trip, maximized reopen + un-maximize, minimized close → normal, off-screen fallback, corrupt-value self-heal. R1/R4(minimized)/R5 and the R3 fallback are now continuously verified end-to-end; suite 40 passed / 1 skipped in ~8s. | josephjang |
+| 2026-07-23 | PR #7 rebase-merged to main; PRD marked Completed and archived. R3 (physical secondary monitor) and R4 (F11-fullscreen close) remain hardware-pending — design-covered, with the off-screen fallback and minimized-close halves verified. | josephjang |
 
 ## Completion Criteria
 
@@ -100,10 +101,21 @@ window should too.
 
 ---
 
-## Archive Info (fill on completion)
+## Archive Info
 
-- **Completed**: YYYY-MM-DD
-- **Summary**:
-- **Actual vs Planned**:
-- **Lessons Learned**:
-- **Follow-up Items**:
+- **Completed**: 2026-07-23 (PR #7 rebase-merged to main)
+- **Summary**: Main window size/position/maximized state now persist across launches via a
+  single `app.mainWindowBounds` JSON setting. Pure core extracted to
+  `Services/WindowBoundsPersistence.cs`; guarded by 11 unit tests plus 6 e2e tests that
+  launch the real app in an isolated Config dir (`TARKOVHELPER_CONFIG_PATH`).
+- **Actual vs Planned**: Implementation matched the 3-task plan. Scope grew beyond it in
+  testing: the pure-core extraction, the unit suite, and the Win32-driven e2e harness were
+  added during the session rather than planned up front.
+- **Lessons Learned**: Restore in the constructor / apply Maximized at `SourceInitialized`
+  is the flicker-free, multi-monitor-correct split. Close-time-only saving is acceptable
+  for geometry. Launching via `dotnet TarkovHelper.dll` bypasses the admin manifest and
+  makes real-app e2e practical.
+- **Follow-up Items**: R3 physical secondary-monitor and R4 F11-fullscreen-close checks
+  when the hardware/scenario is at hand (design-covered; fallbacks verified). The e2e
+  harness in `MainWindowBoundsE2ETests.cs` is slated for extraction/reuse by
+  `feature-persist-map-view-state.prd`.
