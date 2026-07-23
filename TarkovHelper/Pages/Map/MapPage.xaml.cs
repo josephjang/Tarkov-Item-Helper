@@ -1791,7 +1791,11 @@ public partial class MapPage : UserControl
         var mapWidth = MapCanvas.Width;
         var mapHeight = MapCanvas.Height;
 
-        // 뷰어가 아직 렌더링되지 않은 경우 Loaded 이벤트에서 다시 호출
+        // 뷰어가 아직 렌더링되지 않은 경우 Loaded 이벤트에서 다시 호출.
+        // 알려진 한계(2026-07-24 딥 리뷰에서 검토 후 수용): 이 지연 재호출은 취소되지
+        // 않으므로, 큐에 있는 동안 설정된 팬을 나중에 덮어쓸 수 있다 (좁은 경합 —
+        // 최초 로드 중 레이드 시작 + 자동 센터링 + 그 사이 위치 갱신이 겹쳐야 발생).
+        // 복원/층 전환 경로는 centerView: false로 이 경로 자체를 우회한다.
         if (viewerWidth <= 0 || viewerHeight <= 0)
         {
             Dispatcher.BeginInvoke(new Action(CenterMapInView), System.Windows.Threading.DispatcherPriority.Loaded);

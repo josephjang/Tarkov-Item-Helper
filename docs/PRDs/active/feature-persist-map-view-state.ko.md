@@ -142,6 +142,7 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 | `RestoreMapState()` 삭제; 그 의도는 결정 코어 + `SelectionChanged`에서 소비되는 `_pendingViewRestore`로 이전 (`LoadMapImage(key, centerView: false)` → `SetZoom(saved)` → translate 마지막) | 이 메서드는 현재 죽은 코드; `centerView: false`가 지연된 `CenterMapInView`의 복원된 팬 덮어쓰기를 방지 | 2026-07-23 |
 | `StartRaidEventMonitoring`에 `EftRaidEventService.IsMonitoring` 가드 | 탭 진입마다 앱 전역 `FileSystemWatcher`를 부수고 재생성하는 것을 중단 | 2026-07-23 |
 | 프로그램적 맵 전환(레이드 자동 전환, 스크린샷 추적)도 복원 대상 "마지막으로 본 맵"으로 저장 — 딥 리뷰의 열린 질문에 대해 소유자가 Option 1로 확정 | 이 PRD가 선언한 last-viewed 목표와 일치하고 실행 시 레이드 우선순위와도 정합적; 대안(억제 플래그로 사용자가 직접 고른 맵만 저장)은 의미론이 바뀔 경우를 대비해 PR #9에 문서화됨 | 2026-07-24 |
+| `CenterMapInView`의 취소 불가한 지연 재센터링을 현행 유지(세대 토큰 보강 안 함) — 딥 리뷰의 열린 질문에 대해 소유자가 Option B로 확정 | 복원/층 전환 경로는 이미 `centerView: false`로 우회; 잔여 경합은 최초 로드 중 레이드 시작 + 자동 센터링 + 그 사이 위치 갱신이 모두 겹쳐야 발생; 토큰은 타이밍 테스트가 전무한 모든 센터링 호출자의 관찰 가능한 타이밍을 바꿈. 알려진 한계로 재호출 지점에 주석 문서화 | 2026-07-24 |
 
 ## Implementation Plan
 
@@ -187,7 +188,7 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 | 2026-07-23 | 근본 원인 분석으로부터 PRD 작성: 캐시된 MapPage의 `Loaded`가 탭 진입마다 전체 초기화를 재실행; `PopulateMapComboBox`가 `RestoreMapState`보다 먼저 index 0(Woods)을 강제하고, `IsNullOrEmpty(_currentMapKey)` 가드가 항상 실패 (죽은 코드); 이후 리셋값이 저장되어 실제 마지막 맵을 덮어씀. 5개 개선 원칙으로 일반화; 설계 확정 (멱등 `Loaded`, 순수 `MapViewStatePersistence` 코어, 레이드 > 저장 > 기본값 우선순위, 변경 시 저장 + `Closing` 백스톱). | josephjang |
 | 2026-07-24 | Task 1.1–1.3대로 Phase 1 구현 (순수 코어; 탭 진입 재장전 + `ReconcileActiveRaid`를 갖춘 멱등 `Loaded`; `SwitchToRaidMap` 추출; `SelectionChanged`에서 변경 시 저장; `OnWindowClosing` 백스톱; `RestoreMapState` 삭제; `DataRefreshed` 구독 해제와 watcher 재생성 제거). Task 1.4–1.5 테스트: 단위 28개 + e2e 3개 (UIA 탭 구동 성공; 공용 harness를 bounds 테스트에서 추출). 수정 전 앱을 상대로 e2e 검증: 3개 모두 실패 — 특히 수정 전에는 Map 탭을 보다가 앱을 닫으면 **아무것도** 저장되지 않았음이 확인됨 (창 닫힘 시 `Unloaded` 미발화), 즉 `Closing` 백스톱은 이론이 아닌 실재하던 두 번째 유실을 고침. harness 보강: UI Automation을 로드하면 테스트 호스트가 실행 중 DPI-aware로 바뀌어 200% 디스플레이에서 bounds e2e의 좌표 전제가 깨짐 — 호스트 DPI 인지를 per-monitor-v2로 선고정하고 `GetWindowRect`가 물리 픽셀을 WPF 단위로 정규화하도록 수정. 전체 스위트 71 통과 / 1 건너뜀 (기존 스킵). `MainWindow.BtnClearAllData_Click`의 기존 CS1998도 수정. | josephjang |
 | 2026-07-24 | 소유자가 Release 빌드로 수동 검증 완료 — 모든 완료 기준 충족. 남은 단계: PR 오픈. | josephjang |
-| 2026-07-24 | PR #8 딥 리뷰: 검증된 발견 26건을 스택 PR #9에서 수정 (재진입 시 마커/드로어 캐치업, 레이드 식별자 기반 재조정으로 레이드 경로 통합, 인바리언트 컬처 설정 라운드트립, 초기화 재시도 래치, 모니터링 게이트 + 로그 폴더 재지정, 원자적 뷰 상태 저장, e2e 직렬화/보강; 단위 76 + e2e 9 통과). 열린 의미론 질문은 소유자가 Option 1로 확정(프로그램적 레이드/스크린샷 전환도 마지막으로 본 맵으로 저장 — 구현된 동작 유지)했고, `ValidateView` → `NormalizeSavedView` 이름 변경도 승인되어 적용됨. 리뷰의 남은 선택적 후속 과제: `CenterMapInView` 세대 토큰 보강. | josephjang |
+| 2026-07-24 | PR #8 딥 리뷰: 검증된 발견 26건을 스택 PR #9에서 수정 (재진입 시 마커/드로어 캐치업, 레이드 식별자 기반 재조정으로 레이드 경로 통합, 인바리언트 컬처 설정 라운드트립, 초기화 재시도 래치, 모니터링 게이트 + 로그 폴더 재지정, 원자적 뷰 상태 저장, e2e 직렬화/보강; 단위 76 + e2e 9 통과). 소유자가 열린 리뷰 질문 3건을 모두 확정: 의미론은 Option 1(프로그램적 레이드/스크린샷 전환도 마지막으로 본 맵으로 저장 — 구현된 동작 유지); `ValidateView` → `NormalizeSavedView` 이름 변경 승인·적용; `CenterMapInView`는 Option B(지연 재센터링 현행 유지, 알려진 한계를 해당 지점에 주석 문서화 — 세대 토큰 보강 안 함). 리뷰에서 남은 항목 없음. | josephjang |
 
 ## Completion Criteria
 
