@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: In Progress (Phase 1 구현 + 수동 검증 완료; PR 대기)
+- **Status**: Review (구현 + 검증 완료; josephjang/Tarkov-Item-Helper에 PR #8 오픈)
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-24
 - **Owner**: josephjang
