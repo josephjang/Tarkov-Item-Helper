@@ -61,11 +61,12 @@ public static class MapViewStatePersistence
     }
 
     /// <summary>
-    /// Validates a saved zoom/pan view: all values must be finite, and the zoom is
-    /// clamped into [<paramref name="minZoom"/>, <paramref name="maxZoom"/>]. Returns
-    /// null when unusable — callers show the default centered 100% view instead.
+    /// Normalizes a saved zoom/pan view: all values must be finite (else null — callers
+    /// show the default centered 100% view instead), and the zoom is clamped into
+    /// [<paramref name="minZoom"/>, <paramref name="maxZoom"/>]. Named "normalize"
+    /// rather than "validate" because the returned zoom can differ from the stored one.
     /// </summary>
-    public static MapView? ValidateView(
+    public static MapView? NormalizeSavedView(
         double zoomLevel, double translateX, double translateY,
         double minZoom, double maxZoom)
     {
