@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: In Progress (Phase 1 구현 완료; 단위 + e2e 그린; PR 대기)
+- **Status**: In Progress (Phase 1 구현 + 수동 검증 완료; PR 대기)
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-24
 - **Owner**: josephjang
@@ -91,7 +91,7 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
       존재; 복원이 빠진 반쪽이다).
 - [x] Goal 3: **레이드 감지가 우선한다**: 레이드가 진행 중이면(`EftRaidEventService`로
       감지) 감지된 맵이 저장된 맵보다 우선한다 — 최초 로드 시에도, 다른 탭에 있는 동안
-      레이드가 시작된 경우에도. *(단위 테스트 완료; 실제 게임으로의 수동 확인 보류)*
+      레이드가 시작된 경우에도. *(단위 테스트 완료; Release 빌드 수동 검증 2026-07-24 완료)*
 - [x] Goal 4: **첫 실행**(저장값 없음)은 현재 동작을 유지한다: 설정된 첫 맵, 줌 100%,
       중앙 정렬.
 - [x] Goal 5: 멱등 `Loaded` 수정의 구조적 부수 효과: 층, 궤적, 드로어 상태, 마커 매니저
@@ -185,18 +185,19 @@ MapPage는 상태를 *저장하고도* 복원에 실패하는 유일한 페이�
 |------|--------|-----|
 | 2026-07-23 | 근본 원인 분석으로부터 PRD 작성: 캐시된 MapPage의 `Loaded`가 탭 진입마다 전체 초기화를 재실행; `PopulateMapComboBox`가 `RestoreMapState`보다 먼저 index 0(Woods)을 강제하고, `IsNullOrEmpty(_currentMapKey)` 가드가 항상 실패 (죽은 코드); 이후 리셋값이 저장되어 실제 마지막 맵을 덮어씀. 5개 개선 원칙으로 일반화; 설계 확정 (멱등 `Loaded`, 순수 `MapViewStatePersistence` 코어, 레이드 > 저장 > 기본값 우선순위, 변경 시 저장 + `Closing` 백스톱). | josephjang |
 | 2026-07-24 | Task 1.1–1.3대로 Phase 1 구현 (순수 코어; 탭 진입 재장전 + `ReconcileActiveRaid`를 갖춘 멱등 `Loaded`; `SwitchToRaidMap` 추출; `SelectionChanged`에서 변경 시 저장; `OnWindowClosing` 백스톱; `RestoreMapState` 삭제; `DataRefreshed` 구독 해제와 watcher 재생성 제거). Task 1.4–1.5 테스트: 단위 28개 + e2e 3개 (UIA 탭 구동 성공; 공용 harness를 bounds 테스트에서 추출). 수정 전 앱을 상대로 e2e 검증: 3개 모두 실패 — 특히 수정 전에는 Map 탭을 보다가 앱을 닫으면 **아무것도** 저장되지 않았음이 확인됨 (창 닫힘 시 `Unloaded` 미발화), 즉 `Closing` 백스톱은 이론이 아닌 실재하던 두 번째 유실을 고침. harness 보강: UI Automation을 로드하면 테스트 호스트가 실행 중 DPI-aware로 바뀌어 200% 디스플레이에서 bounds e2e의 좌표 전제가 깨짐 — 호스트 DPI 인지를 per-monitor-v2로 선고정하고 `GetWindowRect`가 물리 픽셀을 WPF 단위로 정규화하도록 수정. 전체 스위트 71 통과 / 1 건너뜀 (기존 스킵). `MainWindow.BtnClearAllData_Click`의 기존 CS1998도 수정. | josephjang |
+| 2026-07-24 | 소유자가 Release 빌드로 수동 검증 완료 — 모든 완료 기준 충족. 남은 단계: PR 오픈. | josephjang |
 
 ## Completion Criteria
 
-- [x] 모든 Goals와 Requirements (R1–R6) 충족 *(R3 실제 게임 수동 확인 보류)*
+- [x] 모든 Goals와 Requirements (R1–R6) 충족
 - [x] 빌드 그린 (`dotnet build`)
 - [x] 단위 가드: `MapViewStatePersistenceTests`가 결정/검증 규칙을 보호 (28개)
 - [x] E2E: `MapStateE2ETests`가 격리된 Config 디렉토리에서 실제 앱을 상대로 실행 시
       복원, 탭 전환 생존, 덮어쓰기 금지를 검증
       (빠른 실행에서는 `dotnet test --filter Category!=E2E`로 제외);
       수정 전 앱에서 실패하는 것까지 확인됨
-- [ ] 수동 확인: 실제 게임으로 레이드 자동 전환 정상 동작 (앱을 켠 채 레이드 시작) —
-      자동화로 커버되지 않는 유일한 항목; 탭/재시작 왕복, 첫 실행 기본값, 무효 값
+- [x] 수동 확인: 소유자가 Release 빌드로 완료 (2026-07-24) — 레이드 자동 전환이
+      자동화로 커버되지 않던 유일한 항목이었음; 탭/재시작 왕복, 첫 실행 기본값, 무효 값
       fallback은 위의 e2e/단위 테스트가 커버
 
 ## Risks & Mitigations
