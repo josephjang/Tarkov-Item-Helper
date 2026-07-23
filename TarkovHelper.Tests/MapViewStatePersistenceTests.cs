@@ -7,7 +7,8 @@ namespace TarkovHelper.Tests;
 /// <summary>
 /// Guards the pure decision core of the map view-state persistence
 /// (see the feature-persist-map-view-state PRD): which map to show on first load
-/// (raid > saved > default), raid-liveness detection, and saved zoom/pan validation.
+/// (raid > saved > default), raid-liveness detection, raid identity, and saved
+/// zoom/pan normalization.
 /// </summary>
 public sealed class MapViewStatePersistenceTests
 {
@@ -184,12 +185,12 @@ public sealed class MapViewStatePersistenceTests
 
     #endregion
 
-    #region ValidateView
+    #region NormalizeSavedView
 
     [Fact]
     public void Valid_view_round_trips()
     {
-        var view = ValidateView(1.5, -320.25, 48.0, MinZoom, MaxZoom);
+        var view = NormalizeSavedView(1.5, -320.25, 48.0, MinZoom, MaxZoom);
 
         Assert.NotNull(view);
         Assert.Equal(1.5, view!.ZoomLevel);
@@ -200,7 +201,7 @@ public sealed class MapViewStatePersistenceTests
     [Fact]
     public void Zero_translate_is_a_legitimate_pan()
     {
-        var view = ValidateView(1.0, 0.0, 0.0, MinZoom, MaxZoom);
+        var view = NormalizeSavedView(1.0, 0.0, 0.0, MinZoom, MaxZoom);
 
         Assert.NotNull(view);
         Assert.Equal(0.0, view!.TranslateX);
@@ -213,7 +214,7 @@ public sealed class MapViewStatePersistenceTests
     [InlineData(99.0, MaxZoom)]  // above range
     public void Out_of_range_zoom_is_clamped(double savedZoom, double expected)
     {
-        var view = ValidateView(savedZoom, 10, 10, MinZoom, MaxZoom);
+        var view = NormalizeSavedView(savedZoom, 10, 10, MinZoom, MaxZoom);
 
         Assert.Equal(expected, view!.ZoomLevel);
     }
@@ -227,7 +228,7 @@ public sealed class MapViewStatePersistenceTests
     [InlineData(1.0, 0, double.PositiveInfinity)]
     public void Non_finite_values_reject_the_whole_view(double zoom, double tx, double ty)
     {
-        Assert.Null(ValidateView(zoom, tx, ty, MinZoom, MaxZoom));
+        Assert.Null(NormalizeSavedView(zoom, tx, ty, MinZoom, MaxZoom));
     }
 
     #endregion

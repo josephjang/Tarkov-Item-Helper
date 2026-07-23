@@ -313,7 +313,7 @@ public partial class MapPage : UserControl
         if (choice?.Source == MapViewStatePersistence.MapChoiceSource.Saved)
         {
             // 저장된 줌/팬은 맵 선택 직후 CmbMapSelect_SelectionChanged에서 적용된다
-            _pendingViewRestore = MapViewStatePersistence.ValidateView(
+            _pendingViewRestore = MapViewStatePersistence.NormalizeSavedView(
                 settingsService.MapLastZoomLevel,
                 settingsService.MapLastTranslateX,
                 settingsService.MapLastTranslateY,
