@@ -1746,7 +1746,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Clear all data button click handler
     /// </summary>
-    private async void BtnClearAllData_Click(object sender, RoutedEventArgs e)
+    private void BtnClearAllData_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
             _loc.CurrentLanguage switch
@@ -2201,6 +2201,17 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        try
+        {
+            // WPF does not guarantee Unloaded at shutdown, so the map page's view
+            // state (map/zoom/pan) gets its close-time save here as a backstop.
+            _mapTrackerPage?.PersistViewState();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Failed to save map view state: {ex.Message}");
+        }
+
         try
         {
             var json = WindowBoundsPersistence.CreateSaveValue(
