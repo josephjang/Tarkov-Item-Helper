@@ -4,7 +4,7 @@
 [![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
 
-<a href="https://buymeacoffee.com/zeliperstap" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="30"></a>
+> **注意**: このリポジトリは [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper) から派生し、独立してメンテナンスされているフォークです。このフォークのリリースは CalVer（`YYYY.M.N`）を使用し、**v2026.7.0** から始まります。
 
 Escape from Tarkovのクエストとハイドアウトの進行状況を追跡するWindowsデスクトップアプリケーションです。
 
@@ -48,7 +48,7 @@ Escape from Tarkovのクエストとハイドアウトの進行状況を追跡�
 
 ### 要件
 - Windows OS
-- [.NET 8.0 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
 
 ### リリースダウンロード
 [Releases](../../releases)ページから最新バージョンをダウンロードしてください。
@@ -56,7 +56,7 @@ Escape from Tarkovのクエストとハイドアウトの進行状況を追跡�
 ### ソースからビルド
 ```bash
 # リポジトリをクローン
-git clone https://github.com/Zeliper/Tarkov-Item-Helper.git
+git clone https://github.com/josephjang/Tarkov-Item-Helper.git
 cd Tarkov-Item-Helper
 
 # ビルドと実行
@@ -110,9 +110,10 @@ dotnet run -- --fetch
 
 ## ライセンス
 
-MIT License
+[MIT License](LICENSE)
 
 ## クレジット
 
+- オリジナルプロジェクト: [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper)
 - ゲームデータ: [tarkov.dev](https://tarkov.dev)
 - Escape from TarkovはBattlestate Gamesの商標です。

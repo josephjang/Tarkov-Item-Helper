@@ -4,7 +4,7 @@
 [![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
 
-<a href="https://buymeacoffee.com/zeliperstap" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="30"></a>
+> **참고**: 이 저장소는 [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper)에서 갈라져 나와 독립적으로 유지보수되는 포크입니다. 이 포크의 릴리즈는 CalVer(`YYYY.M.N`)를 사용하며 **v2026.7.0**부터 시작합니다.
 
 Escape from Tarkov 퀘스트 및 은신처 진행 상황을 추적하는 Windows 데스크톱 애플리케이션입니다.
 
@@ -49,7 +49,7 @@ Escape from Tarkov 퀘스트 및 은신처 진행 상황을 추적하는 Windows
 
 ### 요구 사항
 - Windows OS
-- [.NET 8.0 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
 
 ### 릴리즈 다운로드
 [Releases](../../releases) 페이지에서 최신 버전을 다운로드하세요.
@@ -57,7 +57,7 @@ Escape from Tarkov 퀘스트 및 은신처 진행 상황을 추적하는 Windows
 ### 소스에서 빌드
 ```bash
 # 저장소 클론
-git clone https://github.com/Zeliper/Tarkov-Item-Helper.git
+git clone https://github.com/josephjang/Tarkov-Item-Helper.git
 cd Tarkov-Item-Helper
 
 # 빌드 및 실행
@@ -111,9 +111,10 @@ dotnet run -- --fetch
 
 ## 라이선스
 
-MIT License
+[MIT License](LICENSE)
 
 ## 크레딧
 
+- 원본 프로젝트: [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper)
 - 게임 데이터: [tarkov.dev](https://tarkov.dev)
 - Escape from Tarkov는 Battlestate Games의 상표입니다.

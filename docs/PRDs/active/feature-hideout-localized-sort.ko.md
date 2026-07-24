@@ -70,7 +70,7 @@
 
 - [x] Task 3.1: `dotnet test TarkovHelper.sln` 통과 (18 통과, 1 조건부 skip).
 - [ ] Task 3.2: 수동 확인 — 영어/한국어/일본어를 전환하여 목록 순서가 게임 내 은신처 목록과 일치하는지 확인(일본어 collation에 엣지 케이스가 가장 많으므로 일부 항목 점검).
-- [ ] Task 3.3: 저장소의 fork 워크플로에 따라 base `upstream/main`(Zeliper)로 PR 생성.
+- [ ] Task 3.3: `origin/main`(josephjang)으로 PR 생성 — 2026-07-02부터 fork-first로 전환되어 upstream(Zeliper)은 더 이상 대상이 아님.
 
 ## 기술적 결정 (Technical Decisions)
 
