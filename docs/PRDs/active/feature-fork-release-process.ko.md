@@ -122,10 +122,12 @@ upstream(Zeliper/Tarkov-Item-Helper)과 독립적으로 개발되어 왔다. 다
 1. **Preflight**: 버전이 `^\d{4}\.\d{1,2}\.\d+$`에 부합; 태그 `v<ver>` 미사용;
    클린하고 pull된 `main` 위; `gh auth status` 정상 (remote가 두 개이므로 모든
    `gh` 호출에 `-R josephjang/Tarkov-Item-Helper`).
-2. `TarkovHelper.csproj`의 `<Version>/<AssemblyVersion>/<FileVersion>` 범프
-   (**update.xml은 아직 아님**), `chore(release): bump version to <ver>` 커밋.
-3. `git tag v<ver>` → `git push origin main v<ver>` — 이 태그 하나만 push,
-   `git push --tags` 절대 금지 (레거시 upstream 태그 26개는 로컬 전용으로 유지).
+2. `TarkovHelper.csproj`의 `<Version>` 범프 (AssemblyVersion/FileVersion은 이 값에서
+   파생; **update.xml은 아직 아님**), `chore(release): bump version to <ver>` 커밋.
+3. `git tag v<ver>` → `git push --atomic origin main v<ver>` — atomic이라 main push가
+   거부되면 태그도 push되지 않음(미반영 커밋에서 CI가 도는 사고 방지); 이 태그 하나만
+   push, `git push --tags` 절대 금지 (레거시 upstream 태그 26개 v0.9.0–v4.3.0은 로컬
+   전용으로 유지).
 4. CI(`release.yml`): 태그/csproj 가드 → 테스트 → 패키징 → `TarkovHelper.zip` +
    자동 생성 노트로 GitHub Release. `gh run watch --exit-status`로 대기.
 5. `gh release edit --notes-file`로 이중 언어(EN/KO) 노트 큐레이션,

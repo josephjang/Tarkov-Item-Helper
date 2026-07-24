@@ -123,10 +123,12 @@ Canonical executable steps live in `.claude/commands/release.md`; summary:
 1. **Preflight**: version matches `^\d{4}\.\d{1,2}\.\d+$`; tag `v<ver>` unused; on a
    clean, pulled `main`; `gh auth status` OK (all `gh` calls use
    `-R josephjang/Tarkov-Item-Helper` — two remotes exist).
-2. Bump `<Version>/<AssemblyVersion>/<FileVersion>` in `TarkovHelper.csproj`
-   (**not** update.xml), commit `chore(release): bump version to <ver>`.
-3. `git tag v<ver>` → `git push origin main v<ver>` — push exactly this tag, never
-   `git push --tags` (26 legacy upstream tags remain local-only by decision).
+2. Bump `<Version>` in `TarkovHelper.csproj` (AssemblyVersion/FileVersion derive from
+   it; **not** update.xml), commit `chore(release): bump version to <ver>`.
+3. `git tag v<ver>` → `git push --atomic origin main v<ver>` — atomic so a rejected
+   `main` push can't leave the tag firing CI on an unpublished commit; push exactly this
+   tag, never `git push --tags` (26 legacy upstream tags v0.9.0–v4.3.0 remain local-only
+   by decision).
 4. CI (`release.yml`): tag/csproj guard → tests → package → GitHub Release with
    `TarkovHelper.zip` + generated notes. Wait with `gh run watch --exit-status`.
 5. Curate bilingual (EN/KO) notes via `gh release edit --notes-file`, with the

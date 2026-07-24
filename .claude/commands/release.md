@@ -16,16 +16,24 @@
 3. `main` 브랜치에서 클린 워킹 트리인지 확인 후 `git pull origin main`
 4. `gh auth status` 정상 확인. **remote가 두 개(origin=josephjang, upstream=Zeliper)
    이므로 모든 `gh` 호출에 `-R josephjang/Tarkov-Item-Helper`를 붙일 것**
+5. **로컬 빌드 게이트**: `dotnet build TarkovHelper.sln -c Release` 성공 확인.
+   실패하면 여기서 중단 — 태그를 push하기 전에 컴파일 오류를 잡아, CI 실패 후
+   태그/릴리즈를 지우는 복구 절차를 애초에 피합니다 (CI는 여전히 최종 게이트)
 
 ## 릴리즈 수행
 
-1. **csproj 버전 범프**: `TarkovHelper/TarkovHelper.csproj`의 `<Version>`,
-   `<AssemblyVersion>`, `<FileVersion>`을 모두 `$ARGUMENTS`로 변경.
+1. **csproj 버전 범프**: `TarkovHelper/TarkovHelper.csproj`의 `<Version>`만
+   `$ARGUMENTS`로 변경 (`<AssemblyVersion>`/`<FileVersion>`은 SDK가 `<Version>`에서
+   자동 파생하므로 별도 필드가 없음).
    **update.xml은 아직 건드리지 않습니다** (마지막 단계에서 범프)
 2. **커밋**: `git commit -am "chore(release): bump version to $ARGUMENTS"`
-3. **태그 + push**: `git tag v$ARGUMENTS` 후 `git push origin main v$ARGUMENTS`
+3. **태그 + push (atomic)**: `git tag v$ARGUMENTS` 후
+   `git push --atomic origin main v$ARGUMENTS`
+   - `--atomic`: main과 태그를 한 트랜잭션으로 push. main이 non-fast-forward로
+     거부되면 태그도 push되지 않음 → main에 없는 커밋에서 release.yml이 도는 사고 방지
    - 반드시 이 태그 **하나만** push. **`git push --tags` 절대 금지** — 로컬에는
-     upstream 시절 레거시 태그 26개(v0.9.0~v4.2.1)가 있으며 push하지 않기로 결정됨
+     upstream 시절 레거시 태그 26개(v0.9.0~v4.3.0)가 있으며 (baseline v4.3.1 외에는)
+     push하지 않기로 결정됨
 4. **워크플로 대기**: 약 15초 후
    `gh run list -R josephjang/Tarkov-Item-Helper --workflow release.yml --limit 1 --json databaseId`
    로 run ID 확인 →

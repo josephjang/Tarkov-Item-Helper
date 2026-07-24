@@ -129,7 +129,9 @@ public async Task<RefreshResult> RefreshDataFromCacheAsync(
 
 ### 4. AutoUpdater.NET 앱 업데이트
 
-**update.xml** (repo 루트, raw main에서 서빙):
+**update.xml** (repo 루트, raw main에서 서빙) — 아래는 **첫 릴리즈 후 예시** 형태입니다.
+현재 커밋된 값은 `4.3.1`이며, `update.xml`은 릴리즈 자산이 존재한 뒤에야 범프됩니다
+(의도된 lag; `.claude/commands/release.md` 7단계 참조):
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <item>
@@ -158,6 +160,12 @@ internal const string DATABASE_URL = ".../josephjang/Tarkov-Item-Helper/refs/hea
 // 5분 주기로 원격 db_version.txt를 읽어 로컬과 문자열 비교;
 // 다르면 tarkov_data.db를 .tmp로 내려받아 교체하고 DatabaseUpdated 이벤트 발생
 ```
+
+> **참고 (앱 업데이트와 DB의 상호작용):** 앱 self-update zip에는 릴리즈 시점의
+> `tarkov_data.db`/`db_version.txt` 스냅샷이 포함되므로, DB 자동 업데이트로 더 최신 DB를
+>받은 사용자가 앱을 업데이트하면 DB가 스냅샷 버전으로 잠시 되돌아갑니다. 다만 시작 시
+> `StartBackgroundUpdates`가 즉시(dueTime 0) 체크하여 원격과 다르면 곧바로 다시 내려받아
+> 자기 치유되므로 stale 구간은 수 초에 그칩니다 — 의도된 동작입니다.
 
 ---
 
