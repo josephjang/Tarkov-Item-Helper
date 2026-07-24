@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build TarkovHelper.sln -c Release
+
+      # E2E tests launch the real app via Win32 and need an interactive desktop
+      - name: Test
+        run: dotnet test TarkovHelper.sln -c Release --no-build --filter "Category!=E2E"
