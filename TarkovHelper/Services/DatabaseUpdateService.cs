@@ -16,8 +16,8 @@ public sealed class DatabaseUpdateService : IDisposable
     private static DatabaseUpdateService? _instance;
     public static DatabaseUpdateService Instance => _instance ??= new DatabaseUpdateService();
 
-    private const string VERSION_URL = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt";
-    private const string DATABASE_URL = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db";
+    internal const string VERSION_URL = "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt";
+    internal const string DATABASE_URL = "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db";
     private const string LOCAL_VERSION_FILE = "db_version.txt";
     private const string DATABASE_FILE = "tarkov_data.db";
     private const int UPDATE_INTERVAL_MS = 5 * 60 * 1000; // 5분
