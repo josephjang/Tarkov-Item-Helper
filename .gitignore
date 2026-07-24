@@ -15,8 +15,9 @@
 x64/
 [Bb]in/
 [Oo]bj/
-# Release packaging output (build/Create-ReleasePackage.ps1)
-artifacts/
+# Release packaging output (build/Create-ReleasePackage.ps1); anchored to repo
+# root so it doesn't silently swallow an unrelated nested dir named "artifacts"
+/artifacts/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
