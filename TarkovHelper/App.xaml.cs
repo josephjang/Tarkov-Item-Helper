@@ -1,7 +1,6 @@
 ﻿using System.IO;
 using System.Reflection;
 using System.Windows;
-using AutoUpdaterDotNET;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Logging;
 
@@ -13,8 +12,6 @@ namespace TarkovHelper
     public partial class App : Application
     {
         private static readonly ILogger _log = Log.For<App>();
-
-        private const string UpdateXmlUrl = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/main/update.xml";
 
         private static string DataDirectory => Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory,
