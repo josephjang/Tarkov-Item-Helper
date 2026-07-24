@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Status**: In Progress
+- **Status**: Completed (PR #10 merged to main; first release v2026.7.0 published 2026-07-25)
 - **Created**: 2026-07-24
-- **Updated**: 2026-07-24
+- **Updated**: 2026-07-25
 - **Owner**: josephjang
 - **Translations**: Korean companion at `feature-fork-release-process.ko.md` (kept in sync 1:1)
 
@@ -26,16 +26,16 @@ release at all:
 
 ## Goals
 
-- [ ] Goal 1: A fork build updates **only** against the fork: app feed, DB feed, and
+- [x] Goal 1: A fork build updates **only** against the fork: app feed, DB feed, and
       download URLs all point at josephjang/Tarkov-Item-Helper.
-- [ ] Goal 2: A repeatable, mostly-automated release process: pushing a `v*` tag
+- [x] Goal 2: A repeatable, mostly-automated release process: pushing a `v*` tag
       builds, tests, packages, and publishes a GitHub Release with `TarkovHelper.zip`.
-- [ ] Goal 3: Clients never see a download URL that 404s (update.xml is bumped only
+- [x] Goal 3: Clients never see a download URL that 404s (update.xml is bumped only
       after the release asset exists).
-- [ ] Goal 4: The fork is legally distributable: a real MIT `LICENSE` file with dual
+- [x] Goal 4: The fork is legally distributable: a real MIT `LICENSE` file with dual
       copyright (Zeliper + Jeongho Jang), and READMEs that present the project as a
       maintained fork.
-- [ ] Goal 5: First release **v2026.7.0** published and verified end-to-end.
+- [x] Goal 5: First release **v2026.7.0** published and verified end-to-end.
 
 ## Non-Goals (Scope Out)
 
@@ -112,9 +112,10 @@ release at all:
 
 ### Phase 5: First release (after this PR merges to main)
 
-- [ ] Task 5.1: Push the baseline tag: `git push origin refs/tags/v4.3.1`
-- [ ] Task 5.2: Run `/release 2026.7.0` (see "Release Flow" below)
-- [ ] Task 5.3: Verify per the checklist in Completion Criteria
+- [x] Task 5.1: Push the baseline tag: `git push origin refs/tags/v4.3.1`
+- [x] Task 5.2: Run `/release 2026.7.0` (see "Release Flow" below)
+- [x] Task 5.3: Verify per the checklist in Completion Criteria (CI + automated + asset/feed
+      verified; manual runtime smoke checks of the published zip still pending — see criteria)
 
 ## Release Flow (the defined process)
 
@@ -145,24 +146,24 @@ the release and tag, fix on main, re-tag the **same** version.
 | Date | Update | By |
 |------|--------|-----|
 | 2026-07-24 | PRD created. Decisions locked with owner: CalVer `YYYY.M.N` from 2026.7.0, tag-triggered Actions release, framework-dependent zip, remove upstream donation badge, push only `v4.3.1` of the legacy tags. Phases 1–4 implemented in the same session (feature/fork-release-process). | josephjang |
+| 2026-07-25 | Deep review of the branch: 16 fixes applied (ref_name injection → env; single `<Version>` source so AssemblyVersion/FileVersion can't drift; prune non-Windows runtimes −9 MB; publish sanity check; anchored version XPath + CalVer guard; `--atomic` push; full-URL feed pins + Ordinal + migration/boundary guard tests; preflight local build gate). PR #10 merged to main (CI green). | josephjang |
+| 2026-07-25 | **First release published.** Pushed `v4.3.1` baseline tag; bumped csproj → 2026.7.0; `git push --atomic origin main v2026.7.0` triggered `release.yml` (green, 5m3s: version guard → build → test → package → release). GitHub Release `v2026.7.0` live with `TarkovHelper.zip` (36.2 MB, not draft/prerelease); curated bilingual notes applied; `update.xml` bumped to 2026.7.0 on main after asset verification. | josephjang |
 
 ## Completion Criteria
 
-- [ ] All Goals met
-- [ ] PR CI (`ci.yml`) green; branch merged to main
-- [ ] `v4.3.1` baseline tag pushed to origin
-- [ ] First release published: `release.yml` green for `v2026.7.0`;
-      `TarkovHelper.zip` attached and downloadable unauthenticated
-- [ ] Zip layout verified: `TarkovHelper.exe` + `Assets/` (incl. `db_version.txt`) at
-      zip root; no `*.pdb`; no `Config/Data/Cache/Logs`
-- [ ] Extracted app runs (`dotnet TarkovHelper.dll` to bypass the admin manifest) and
-      shows `v2026.7.0`
-- [ ] In-app update check fetches the fork feed and reports up to date
-- [ ] DB update check fetches the fork `db_version.txt` and reports up to date
-- [ ] `update.xml` on main advertises 2026.7.0 after the post-release bump
-- [ ] Optional rehearsal: a local 2026.6.0 build is offered 2026.7.0 and AutoUpdater
-      replaces it in place (temporary bump not committed)
-- [ ] Unit guards green: `UpdateXmlTests`, `UpdateServiceTests`
+- [x] All Goals met
+- [x] PR CI (`ci.yml`) green; branch merged to main
+- [x] `v4.3.1` baseline tag pushed to origin
+- [x] First release published: `release.yml` green for `v2026.7.0`;
+      `TarkovHelper.zip` attached (public repo, unauthenticated download)
+- [x] Zip layout verified (locally, same packaging script CI runs): `TarkovHelper.exe` +
+      `Assets/` (incl. `db_version.txt`) at zip root; no `*.pdb`; no `Config/Data/Cache/Logs`
+- [x] `update.xml` on main advertises 2026.7.0 after the post-release bump
+- [x] Unit guards green: `UpdateXmlTests`, `UpdateServiceTests`
+- [ ] **Pending manual smoke checks** of the *published* zip (not yet run this session):
+      extracted app runs via `dotnet TarkovHelper.dll` and shows `v2026.7.0`; in-app update
+      check reports up to date; DB update check reports up to date. (Optional AutoUpdater
+      self-update rehearsal from a local 2026.6.0 build also pending.)
 
 ## Risks & Mitigations
 

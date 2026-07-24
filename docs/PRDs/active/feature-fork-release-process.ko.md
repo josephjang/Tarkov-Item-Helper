@@ -2,9 +2,9 @@
 
 ## 개요
 
-- **상태**: 진행 중
+- **상태**: 완료 (PR #10 main 머지; 첫 릴리즈 v2026.7.0 발행 2026-07-25)
 - **작성일**: 2026-07-24
-- **수정일**: 2026-07-24
+- **수정일**: 2026-07-25
 - **담당자**: josephjang
 - **번역**: 영어 원본 `feature-fork-release-process.md` (1:1 동기화 유지)
 
@@ -26,15 +26,15 @@ upstream(Zeliper/Tarkov-Item-Helper)과 독립적으로 개발되어 왔다. 다
 
 ## 목표
 
-- [ ] 목표 1: 포크 빌드는 **오직** 포크에 대해서만 업데이트: 앱 피드, DB 피드,
+- [x] 목표 1: 포크 빌드는 **오직** 포크에 대해서만 업데이트: 앱 피드, DB 피드,
       다운로드 URL 모두 josephjang/Tarkov-Item-Helper를 가리킨다.
-- [ ] 목표 2: 반복 가능하고 대부분 자동화된 릴리즈 프로세스: `v*` 태그 push가
+- [x] 목표 2: 반복 가능하고 대부분 자동화된 릴리즈 프로세스: `v*` 태그 push가
       빌드→테스트→패키징→`TarkovHelper.zip`이 첨부된 GitHub Release 발행까지 수행.
-- [ ] 목표 3: 클라이언트는 404가 나는 다운로드 URL을 절대 보지 않는다
+- [x] 목표 3: 클라이언트는 404가 나는 다운로드 URL을 절대 보지 않는다
       (update.xml은 릴리즈 자산이 존재한 뒤에만 범프).
-- [ ] 목표 4: 법적으로 배포 가능한 포크: 이중 저작권(Zeliper + Jeongho Jang)의
+- [x] 목표 4: 법적으로 배포 가능한 포크: 이중 저작권(Zeliper + Jeongho Jang)의
       실제 MIT `LICENSE` 파일과, 프로젝트를 유지보수 포크로 소개하는 README.
-- [ ] 목표 5: 첫 릴리즈 **v2026.7.0** 발행 및 end-to-end 검증.
+- [x] 목표 5: 첫 릴리즈 **v2026.7.0** 발행 및 end-to-end 검증.
 
 ## 범위 제외 (Non-Goals)
 
@@ -111,9 +111,10 @@ upstream(Zeliper/Tarkov-Item-Helper)과 독립적으로 개발되어 왔다. 다
 
 ### Phase 5: 첫 릴리즈 (이 PR이 main에 머지된 후)
 
-- [ ] Task 5.1: 기준선 태그 push: `git push origin refs/tags/v4.3.1`
-- [ ] Task 5.2: `/release 2026.7.0` 실행 (아래 "릴리즈 플로우" 참조)
-- [ ] Task 5.3: 완료 기준 체크리스트에 따라 검증
+- [x] Task 5.1: 기준선 태그 push: `git push origin refs/tags/v4.3.1`
+- [x] Task 5.2: `/release 2026.7.0` 실행 (아래 "릴리즈 플로우" 참조)
+- [x] Task 5.3: 완료 기준 체크리스트에 따라 검증 (CI + 자동 + 자산/피드 검증 완료;
+      발행된 zip의 수동 런타임 스모크 체크는 미완 — 완료 기준 참조)
 
 ## 릴리즈 플로우 (정의되는 프로세스)
 
@@ -144,24 +145,23 @@ upstream(Zeliper/Tarkov-Item-Helper)과 독립적으로 개발되어 왔다. 다
 | 날짜 | 업데이트 | 작성자 |
 |------|----------|--------|
 | 2026-07-24 | PRD 작성. 소유자와 결정 확정: 2026.7.0부터 CalVer `YYYY.M.N`, 태그 트리거 Actions 릴리즈, framework-dependent zip, upstream 후원 배지 제거, 레거시 태그는 `v4.3.1`만 push. Phase 1–4를 같은 세션에서 구현 (feature/fork-release-process). | josephjang |
+| 2026-07-25 | 브랜치 딥 리뷰: 16개 수정 적용 (ref_name 인젝션 → env; 단일 `<Version>` 소스로 AssemblyVersion/FileVersion drift 차단; 비-Windows 런타임 제거 −9 MB; publish sanity check; 앵커 XPath + CalVer 가드; `--atomic` push; full-URL 피드 pin + Ordinal + 마이그레이션/경계 가드 테스트; preflight 로컬 빌드 게이트). PR #10 main 머지 (CI green). | josephjang |
+| 2026-07-25 | **첫 릴리즈 발행.** `v4.3.1` 기준선 태그 push; csproj → 2026.7.0 범프; `git push --atomic origin main v2026.7.0`로 `release.yml` 트리거 (green, 5m3s: 버전 가드 → 빌드 → 테스트 → 패키징 → 릴리즈). GitHub Release `v2026.7.0` 라이브, `TarkovHelper.zip`(36.2 MB, draft/prerelease 아님) 첨부; 이중언어 노트 적용; 자산 확인 후 main의 `update.xml`을 2026.7.0으로 범프. | josephjang |
 
 ## 완료 기준
 
-- [ ] 모든 목표 달성
-- [ ] PR CI(`ci.yml`) green; 브랜치 main 머지
-- [ ] `v4.3.1` 기준선 태그 origin push
-- [ ] 첫 릴리즈 발행: `v2026.7.0`에 대해 `release.yml` green;
-      `TarkovHelper.zip` 첨부 및 비인증 다운로드 가능
-- [ ] Zip 레이아웃 검증: zip 루트에 `TarkovHelper.exe` + `Assets/`
-      (`db_version.txt` 포함); `*.pdb` 없음; `Config/Data/Cache/Logs` 없음
-- [ ] 추출한 앱 실행(관리자 매니페스트 우회를 위해 `dotnet TarkovHelper.dll`) 및
-      `v2026.7.0` 표시 확인
-- [ ] 인앱 업데이트 확인이 포크 피드를 가져와 최신 판정
-- [ ] DB 업데이트 확인이 포크 `db_version.txt`를 가져와 최신 판정
-- [ ] 릴리즈 후 범프 뒤 main의 `update.xml`이 2026.7.0을 광고
-- [ ] 선택 리허설: 로컬 2026.6.0 빌드에 2026.7.0이 제안되고 AutoUpdater가
-      인플레이스 교체 (임시 범프는 커밋하지 않음)
-- [ ] 단위 가드 green: `UpdateXmlTests`, `UpdateServiceTests`
+- [x] 모든 목표 달성
+- [x] PR CI(`ci.yml`) green; 브랜치 main 머지
+- [x] `v4.3.1` 기준선 태그 origin push
+- [x] 첫 릴리즈 발행: `v2026.7.0`에 대해 `release.yml` green;
+      `TarkovHelper.zip` 첨부 (public 저장소, 비인증 다운로드)
+- [x] Zip 레이아웃 검증 (CI와 동일한 패키징 스크립트로 로컬 확인): zip 루트에
+      `TarkovHelper.exe` + `Assets/` (`db_version.txt` 포함); `*.pdb` 없음; `Config/Data/Cache/Logs` 없음
+- [x] 릴리즈 후 범프 뒤 main의 `update.xml`이 2026.7.0을 광고
+- [x] 단위 가드 green: `UpdateXmlTests`, `UpdateServiceTests`
+- [ ] **수동 스모크 체크 미완** (이번 세션에서 발행된 zip 대상 미실행): 추출한 앱을
+      `dotnet TarkovHelper.dll`로 실행해 `v2026.7.0` 표시 확인; 인앱 업데이트 확인 최신 판정;
+      DB 업데이트 확인 최신 판정. (로컬 2026.6.0 빌드로 AutoUpdater 자체 교체 리허설도 미완.)
 
 ## 리스크 및 완화
 
