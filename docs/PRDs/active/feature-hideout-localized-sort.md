@@ -70,7 +70,7 @@ The in-game order is alphabetical by the **localized** name (English alphabetica
 
 - [x] Task 3.1: `dotnet test TarkovHelper.sln` green (18 passed, 1 conditional skip).
 - [ ] Task 3.2: Manual check — switch English/Korean/Japanese and confirm the list order matches the in-game hideout list (Japanese collation has the most edge cases; spot-check a few entries).
-- [ ] Task 3.3: Open a PR with base `upstream/main` (Zeliper) per the repo's fork workflow.
+- [ ] Task 3.3: Open a PR to `origin/main` (josephjang) — the fork went fork-first on 2026-07-02; upstream (Zeliper) is no longer targeted.
 
 ## Technical Decisions
 

@@ -6,7 +6,15 @@ TarkovHelper의 데이터베이스 업데이트 메커니즘에 대한 상세 �
 
 ## 개요
 
-TarkovHelper는 **자동 DB 다운로드 기능이 없습니다**. 대신 다음과 같은 구조로 동작합니다:
+TarkovHelper는 두 가지 자동 업데이트 채널을 가집니다:
+
+1. **앱 업데이트** — AutoUpdater.NET이 GitHub Release의 `TarkovHelper.zip`으로 앱 전체를 교체
+   (`Services/UpdateService.cs`, 3분 주기 체크)
+2. **DB 업데이트** — `Services/DatabaseUpdateService.cs`가 5분 주기로 GitHub raw의
+   `db_version.txt`를 확인하고, 버전이 다르면 `tarkov_data.db`만 다운로드해 교체
+   (앱 업데이트 없이 DB만 갱신됨)
+
+초기 배포 구조는 다음과 같습니다:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -113,31 +121,42 @@ public async Task<RefreshResult> RefreshDataFromCacheAsync(
 </None>
 ```
 
-**CreateRelease.bat**:
-```batch
-# 빌드 출력 → TarkovHelper.zip 패키징
-# tarkov_data.db가 포함됨
+**build/Create-ReleasePackage.ps1** (릴리즈 워크플로가 실행):
+```powershell
+# dotnet publish (framework-dependent) → artifacts/TarkovHelper.zip 패키징
+# tarkov_data.db와 db_version.txt가 포함됨
 ```
 
 ### 4. AutoUpdater.NET 앱 업데이트
 
-**update.xml** (GitHub 호스팅):
+**update.xml** (repo 루트, raw main에서 서빙):
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <item>
-    <version>4.0.2</version>
-    <url>https://github.com/Zeliper/Tarkov-Item-Helper/releases/download/v4.0.2/TarkovHelper.zip</url>
-    <changelog>https://github.com/Zeliper/Tarkov-Item-Helper/releases/latest</changelog>
+    <version>2026.7.0</version>
+    <url>https://github.com/josephjang/Tarkov-Item-Helper/releases/download/v2026.7.0/TarkovHelper.zip</url>
+    <changelog>https://github.com/josephjang/Tarkov-Item-Helper/releases/latest</changelog>
     <mandatory>false</mandatory>
 </item>
 ```
 
-**App.xaml.cs**:
+**Services/UpdateService.cs** (업데이트 URL과 체크 로직의 소유자):
 ```csharp
-private const string UpdateXmlUrl = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/main/update.xml";
+internal const string UpdateXmlUrl = "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/main/update.xml";
 
-// 시작 시 업데이트 체크
-AutoUpdater.Start(UpdateXmlUrl);
+// 3분 주기 + 수동 버튼으로 update.xml 체크; 새 버전 발견 시 UI에 표시.
+// 사용자가 업데이트 버튼을 누르면 AutoUpdater.Start(UpdateXmlUrl)로 교체 수행.
+```
+
+### 5. DB 자동 업데이트 (DatabaseUpdateService)
+
+**Services/DatabaseUpdateService.cs** — 앱 업데이트와 독립적으로 DB만 갱신:
+```csharp
+internal const string VERSION_URL  = ".../josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt";
+internal const string DATABASE_URL = ".../josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db";
+
+// 5분 주기로 원격 db_version.txt를 읽어 로컬과 문자열 비교;
+// 다르면 tarkov_data.db를 .tmp로 내려받아 교체하고 DatabaseUpdated 이벤트 발생
 ```
 
 ---
@@ -175,9 +194,9 @@ AutoUpdater.Start(UpdateXmlUrl);
 ## 버전 관리
 
 ### DB 버전
-- 파일: `Assets/db_version.txt`
-- 현재: `1.0.1`
-- **참고**: 현재 이 버전은 런타임에 사용되지 않음
+- 파일: `Assets/db_version.txt` (예: `1.0.10` — 앱 버전과 독립적인 DB 데이터 버전)
+- `DatabaseUpdateService`가 로컬/원격 값을 **문자열 동등 비교**하여 다르면 DB를 다운로드
+- 배포 zip에 포함됨 (없으면 신규 설치가 첫 체크에서 DB 전체를 재다운로드)
 
 ### 앱 버전 변경 시 처리
 
@@ -262,17 +281,25 @@ WHERE MapName = @MapName
 
 ### 개발자 워크플로우
 
+**DB만 갱신** (앱 릴리즈 불필요):
+
 ```
-1. TarkovDBEditor 실행
-2. "Refresh Data" 버튼 클릭
+1. TarkovDBEditor 실행 → "Refresh Data"
    - tarkov.dev API에서 최신 데이터 가져옴
    - Wiki 데이터 캐시 업데이트
    - tarkov_data.db 업데이트
-3. Map Editor에서 마커 편집 (필요시)
-4. 변경된 tarkov_data.db를 TarkovHelper/Assets/에 복사
-5. TarkovHelper 빌드
-6. GitHub Release 생성
-7. update.xml 업데이트
+2. Map Editor에서 마커 편집 (필요시)
+3. 변경된 tarkov_data.db를 TarkovHelper/Assets/에 복사, db_version.txt 버전 올림
+4. main에 커밋/push → 사용자 앱의 DatabaseUpdateService가 5분 내 자동 반영
+```
+
+**앱 릴리즈** (`/release <version>` 커맨드, 상세는 `.claude/commands/release.md`):
+
+```
+1. csproj 버전 범프 커밋 → v<version> 태그 push
+2. GitHub Actions(release.yml)가 빌드/테스트/패키징 → Release + TarkovHelper.zip 생성
+3. 릴리즈 노트 큐레이션
+4. 자산 확인 후 update.xml 범프 (마지막 — 클라이언트가 404 URL을 보지 않도록)
 ```
 
 ### 사용자 워크플로우
@@ -292,7 +319,9 @@ WHERE MapName = @MapName
 ## 관련 파일
 
 ### TarkovHelper
-- `App.xaml.cs` - AutoUpdater 설정, 버전 체크
+- `Services/UpdateService.cs` - 앱 업데이트 체크 (update.xml URL 소유), AutoUpdater 실행
+- `Services/DatabaseUpdateService.cs` - DB 자동 업데이트 (db_version.txt/tarkov_data.db URL 소유)
+- `App.xaml.cs` - 앱 버전 변경 시 캐시 초기화 (`CheckAndRefreshDataOnVersionChange`)
 - `Services/UserDataDbService.cs` - 사용자 데이터 관리
 - `Services/MigrationService.cs` - 버전 마이그레이션
 
@@ -312,7 +341,7 @@ WHERE MapName = @MapName
 
 ## 향후 개선 가능성
 
-1. **별도 DB 업데이트**: 앱 업데이트 없이 DB만 업데이트하는 기능
-2. **DB 버전 체크**: db_version.txt를 활용한 DB 버전 확인
-3. **증분 업데이트**: 변경된 데이터만 다운로드
-4. **백그라운드 동기화**: 앱 실행 중 자동 데이터 동기화
+1. **증분 업데이트**: 변경된 데이터만 다운로드 (현재는 DB 파일 전체 교체)
+
+(별도 DB 업데이트, db_version.txt 버전 체크, 백그라운드 동기화는
+`DatabaseUpdateService`로 구현 완료)

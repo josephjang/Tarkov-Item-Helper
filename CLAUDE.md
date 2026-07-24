@@ -142,6 +142,17 @@ Services emit events (ProgressChanged, DatabaseUpdated, DataRefreshed) that UI p
 - **GitHub**: Auto-updates for both app and database
 - **EFT Game Logs**: Real-time quest/raid event monitoring
 
+## Releases
+
+This repo (josephjang/Tarkov-Item-Helper) releases independently of upstream
+(Zeliper). Versions use CalVer `YYYY.M.N` (N = release counter within the
+month, no fix/feature semantics), starting at v2026.7.0.
+
+- Run `/release <version>` — it bumps the csproj, pushes the tag (never `git push
+  --tags`), waits for `.github/workflows/release.yml` to build/test/package/publish
+  `TarkovHelper.zip`, then bumps `update.xml` **last** so clients never see a 404 URL.
+- Design rationale: `docs/PRDs/active/feature-fork-release-process.md`
+
 ## Framework & Dependencies
 
 - **.NET 8.0 WPF** (Windows desktop)
