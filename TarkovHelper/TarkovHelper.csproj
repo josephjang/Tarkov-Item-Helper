@@ -8,10 +8,11 @@
     <UseWPF>true</UseWPF>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
 
-    <!-- Version Info for Auto-Update (CalVer YYYY.M.N since the fork went independent; bumped by /release) -->
+    <!-- App version. Still 4.3.1 (inherited); the first fork release retargets this
+         to CalVer YYYY.M.N via /release. AssemblyVersion/FileVersion are intentionally
+         omitted so the SDK derives both from Version — one knob the release can't leave
+         half-bumped, and the value UpdateService reads at runtime. -->
     <Version>4.3.1</Version>
-    <AssemblyVersion>4.3.1</AssemblyVersion>
-    <FileVersion>4.3.1</FileVersion>
     <ApplicationIcon>1764579946.ico</ApplicationIcon>
 
     <!-- App identity (fork of Zeliper/Tarkov-Item-Helper, maintained at josephjang/Tarkov-Item-Helper) -->
