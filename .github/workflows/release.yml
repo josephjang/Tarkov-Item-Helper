@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Verify tag matches project version
+        shell: pwsh
+        run: |
+          $tagVersion  = '${{ github.ref_name }}'.TrimStart('v')
+          $projVersion = (Select-Xml -Path TarkovHelper/TarkovHelper.csproj -XPath '//Version').Node.InnerText
+          if ($tagVersion -ne $projVersion) {
+            throw "Tag version '$tagVersion' does not match csproj <Version> '$projVersion'. Bump the csproj before tagging."
+          }
+          # update.xml is intentionally NOT checked here: it lags one step behind
+          # by design (it is bumped only after the release asset exists).
+
+      - name: Test
+        run: dotnet test TarkovHelper.sln -c Release --filter "Category!=E2E"
+
+      - name: Package
+        shell: pwsh
+        run: ./build/Create-ReleasePackage.ps1
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create '${{ github.ref_name }}'
+          artifacts/TarkovHelper.zip
+          --title '${{ github.ref_name }}'
+          --generate-notes
