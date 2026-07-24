@@ -79,10 +79,48 @@ public sealed class UpdateServiceTests
     [Fact]
     public void Update_feed_constants_point_at_fork()
     {
-        const string fork = "/josephjang/Tarkov-Item-Helper/";
+        // Pin the full URLs, not a `Contains("/josephjang/…/")` substring: a substring
+        // check would also pass for a wrong host like https://evil.example/josephjang/…,
+        // which is exactly the drift this guard exists to catch.
+        Assert.Equal(
+            "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/main/update.xml",
+            UpdateService.UpdateXmlUrl);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt",
+            DatabaseUpdateService.VERSION_URL);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db",
+            DatabaseUpdateService.DATABASE_URL);
+    }
 
-        Assert.Contains(fork, UpdateService.UpdateXmlUrl);
-        Assert.Contains(fork, DatabaseUpdateService.VERSION_URL);
-        Assert.Contains(fork, DatabaseUpdateService.DATABASE_URL);
+    [Fact]
+    public void First_calver_release_outranks_the_inherited_semver_line()
+    {
+        // The migration linchpin: the first fork release (CalVer 2026.7.0) must compare
+        // GREATER than the inherited 4.x line under System.Version, so a 4.3.1 fork
+        // install is actually offered the first CalVer release (UpdateService compares
+        // updateInfo.Version > _currentVersion). If this flips, old installs silently
+        // stop updating and the dead v4.3.1 URL in update.xml would never be superseded.
+        var release = UpdateService.ParseUpdateXml(
+            "<item><version>2026.7.0</version><url>https://example.test/x.zip</url></item>");
+
+        Assert.NotNull(release);
+        Assert.True(release.Version > new Version(4, 3, 1));
+    }
+
+    [Fact]
+    public void Feed_version_equal_to_the_running_build_is_not_offered_as_an_update()
+    {
+        // update.xml carries a 3-part CalVer version; the running app's version is the
+        // 4-part AssemblyVersion (revision 0). The "don't offer myself to myself" outcome
+        // relies on System.Version ordering 3-part BELOW the same 4-part-with-zero
+        // (Version(2026,7,0) < Version(2026,7,0,0)). Pin it so a future switch to 4-part
+        // feed versions can't silently turn an up-to-date client into a self-update loop.
+        var feed = UpdateService.ParseUpdateXml(
+            "<item><version>2026.7.0</version><url>https://example.test/x.zip</url></item>");
+        var runningBuild = new Version(2026, 7, 0, 0);
+
+        Assert.NotNull(feed);
+        Assert.False(feed.Version > runningBuild);
     }
 }

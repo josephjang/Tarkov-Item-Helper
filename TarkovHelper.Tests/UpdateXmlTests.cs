@@ -13,6 +13,8 @@ namespace TarkovHelper.Tests;
 /// The xml's version is intentionally NOT asserted against the csproj version: during a
 /// release, update.xml lags one step behind by design (it is bumped only after the
 /// GitHub Release asset exists, so clients never see a download URL that 404s).
+/// The complementary half of this release invariant — the tag matching the csproj
+/// version, plus the CalVer tag-format guard — lives in .github/workflows/release.yml.
 /// </summary>
 public sealed class UpdateXmlTests
 {
@@ -56,8 +58,10 @@ public sealed class UpdateXmlTests
         var updateInfo = UpdateService.ParseUpdateXml(File.ReadAllText(RepoUpdateXmlPath()));
 
         Assert.NotNull(updateInfo);
-        Assert.StartsWith(ForkRepoUrl, updateInfo.DownloadUrl);
-        Assert.StartsWith(ForkRepoUrl, updateInfo.ChangelogUrl);
+        // Ordinal: this is a host-pinning guard, so the match must be byte-exact and
+        // independent of the test runner's locale, not a culture-aware comparison.
+        Assert.StartsWith(ForkRepoUrl, updateInfo.DownloadUrl, StringComparison.Ordinal);
+        Assert.StartsWith(ForkRepoUrl, updateInfo.ChangelogUrl, StringComparison.Ordinal);
     }
 
     [Fact]
