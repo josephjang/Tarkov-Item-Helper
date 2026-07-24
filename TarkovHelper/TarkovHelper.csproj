@@ -8,11 +8,17 @@
     <UseWPF>true</UseWPF>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
 
-    <!-- Version Info for Auto-Update -->
+    <!-- Version Info for Auto-Update (CalVer YYYY.M.N since the fork went independent; bumped by /release) -->
     <Version>4.3.1</Version>
     <AssemblyVersion>4.3.1</AssemblyVersion>
     <FileVersion>4.3.1</FileVersion>
     <ApplicationIcon>1764579946.ico</ApplicationIcon>
+
+    <!-- App identity (fork of Zeliper/Tarkov-Item-Helper, maintained at josephjang/Tarkov-Item-Helper) -->
+    <Product>Tarkov Item Helper</Product>
+    <Authors>Zeliper, Jeongho Jang</Authors>
+    <Copyright>Copyright (c) 2025 Zeliper, (c) 2026 Jeongho Jang</Copyright>
+    <RepositoryUrl>https://github.com/josephjang/Tarkov-Item-Helper</RepositoryUrl>
 
     <!-- AutoUpdater.NET 다국어 리소스 제한 (en, ko, ja만 유지) -->
     <SatelliteResourceLanguages>en;ko;ja-jp</SatelliteResourceLanguages>
@@ -33,6 +39,10 @@
     <None Update="Assets\tarkov_data.db">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Local DB version stamp; without it a fresh install re-downloads the full DB on first check -->
+    <None Update="Assets\db_version.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Assets\icons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -49,6 +59,10 @@
     <None Update="Assets\DB\Data\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TarkovHelper.Tests" />
   </ItemGroup>
 
   <ItemGroup>
