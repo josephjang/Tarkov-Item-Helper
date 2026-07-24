@@ -19,28 +19,47 @@ jobs:
 
       - name: Verify tag matches project version
         shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          $tagVersion  = '${{ github.ref_name }}'.TrimStart('v')
-          $projVersion = (Select-Xml -Path TarkovHelper/TarkovHelper.csproj -XPath '//Version').Node.InnerText
+          $tagVersion = $env:TAG_NAME.TrimStart('v')
+          if ($tagVersion -notmatch '^\d{4}\.\d{1,2}\.\d+$') {
+            throw "Tag '$env:TAG_NAME' is not a CalVer YYYY.M.N release tag."
+          }
+          $versionNodes = @(Select-Xml -Path TarkovHelper/TarkovHelper.csproj -XPath '/Project/PropertyGroup/Version')
+          if ($versionNodes.Count -ne 1) {
+            throw "Expected exactly one <Version> in TarkovHelper.csproj, found $($versionNodes.Count)."
+          }
+          $projVersion = $versionNodes[0].Node.InnerText
+          # String equality on purpose: the tag name forms the release-asset download
+          # URL, so it must match the csproj version byte-for-byte (v2026.07.0 and
+          # v2026.7.0 would produce different asset URLs even though System.Version
+          # treats them as equal).
           if ($tagVersion -ne $projVersion) {
             throw "Tag version '$tagVersion' does not match csproj <Version> '$projVersion'. Bump the csproj before tagging."
           }
           # update.xml is intentionally NOT checked here: it lags one step behind
-          # by design (it is bumped only after the release asset exists).
+          # by design (it is bumped only after the release asset exists). Its own
+          # consistency (fork-URL pins, version-to-asset-URL match) is guarded by
+          # TarkovHelper.Tests/UpdateXmlTests.cs.
+
+      - name: Build
+        run: dotnet build TarkovHelper.sln -c Release
 
       - name: Test
-        run: dotnet test TarkovHelper.sln -c Release --filter "Category!=E2E"
+        run: dotnet test TarkovHelper.sln -c Release --no-build --filter "Category!=E2E"
 
       - name: Package
         shell: pwsh
-        run: ./build/Create-ReleasePackage.ps1
+        run: ./build/Create-ReleasePackage.ps1 -NoBuild
 
       - name: Create GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
         run: >
-          gh release create '${{ github.ref_name }}'
+          gh release create $env:TAG_NAME
           artifacts/TarkovHelper.zip
-          --title '${{ github.ref_name }}'
+          --title $env:TAG_NAME
           --generate-notes
