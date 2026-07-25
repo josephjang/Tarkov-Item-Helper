@@ -8,7 +8,8 @@
         Title="Tarkov Helper" Height="800" Width="1400"
         MinHeight="400" MinWidth="600"
         WindowStartupLocation="CenterScreen"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        SizeChanged="Window_SizeChanged">
 
     <Window.Resources>
         <!-- PvP/PvE game mode toggle button -->
@@ -65,63 +66,59 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="TARKOV HELPER" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="Bold"
+                        <TextBlock x:Name="TxtBrandTitle" Text="TARKOV HELPER" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
 
-                        <!-- Update Button -->
-                        <Button x:Name="BtnCheckUpdate" Content="Check Update"
-                                Padding="8,4" Margin="16,0,0,0"
-                                FontSize="{DynamicResource FontSizeXSmall}"
-                                Click="BtnCheckUpdate_Click"
-                                ToolTip="Check for updates"
-                                Visibility="Visible"/>
-
-                        <!-- Update Available Button (hidden by default) -->
-                        <Button x:Name="BtnUpdateAvailable"
-                                Padding="8,4" Margin="16,0,0,0"
-                                FontSize="{DynamicResource FontSizeXSmall}"
-                                Click="BtnUpdateAvailable_Click"
-                                Background="#4CAF50"
-                                Foreground="White"
+                        <!-- Version display. Idle: a passive (non-clickable) chip with the current
+                             version — manual checks live in Settings, auto-checks run every 3 min.
+                             Update available: the chip swaps for a green "Update vX.Y.Z" pill whose
+                             single action (install) is self-explanatory. -->
+                        <Border x:Name="ChipVersion" Background="{StaticResource BackgroundLightBrush}"
+                                CornerRadius="4" Padding="8,4" Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip="Current version — updates are checked automatically">
+                            <TextBlock x:Name="TxtVersionChip" Text="v0.0.0"
+                                       FontSize="{DynamicResource FontSizeTiny}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                        <Button x:Name="BtnVersionChip"
+                                Padding="8,3" Margin="12,0,0,0"
+                                Background="#4CAF50" Foreground="White"
+                                Click="BtnVersionChip_Click"
                                 Visibility="Collapsed">
-                            <Button.Content>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Update to " VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="TxtUpdateVersion" Text="v0.0.0" VerticalAlignment="Center" FontWeight="Bold"/>
-                                </StackPanel>
-                            </Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE896;"
+                                           FontFamily="{StaticResource IconFont}"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                <TextBlock x:Name="TxtUpdatePillLabel" Text="Update v0.0.0"
+                                           FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                            </StackPanel>
                         </Button>
-
-                        <!-- Update Checking Indicator -->
-                        <TextBlock x:Name="TxtUpdateChecking" Text="Checking..."
-                                   FontSize="{DynamicResource FontSizeXSmall}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" Margin="16,0,0,0"
-                                   Visibility="Collapsed"/>
-
-                        <!-- Version Info Panel -->
-                        <StackPanel x:Name="VersionInfoPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                            <TextBlock x:Name="TxtCurrentVersion" Text="v4.0.0"
-                                       FontSize="{DynamicResource FontSizeTiny}"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text=" · "
-                                       FontSize="{DynamicResource FontSizeTiny}"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock x:Name="TxtUpdateStatus" Text="Up to date"
-                                       FontSize="{DynamicResource FontSizeTiny}"
-                                       Foreground="#4CAF50"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock x:Name="TxtLastCheckTime" Text=""
-                                       FontSize="{DynamicResource FontSizeTiny}"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
-                        </StackPanel>
                     </StackPanel>
 
                     <!-- Right Side Controls -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Sync / raid status chip: off / watching logs / matching / in raid -->
+                        <Border x:Name="ChipSyncStatus" Background="{StaticResource BackgroundLightBrush}"
+                                CornerRadius="4" Padding="8,5" Margin="0,0,12,0"
+                                VerticalAlignment="Center" Cursor="Hand"
+                                MouseLeftButtonUp="ChipSyncStatus_Click"
+                                ToolTip="Game-log monitoring status — click to open Settings">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="SyncStatusDot" Width="8" Height="8"
+                                         Fill="#757575" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TxtSyncStatus" Text="Sync off"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Game Mode Toggle (PvP / PvE) -->
                         <Border Background="{StaticResource BackgroundLightBrush}"
                                 CornerRadius="4" Padding="2" Margin="0,0,12,0"
@@ -142,64 +139,36 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Player Level Control -->
-                        <Border Background="{StaticResource BackgroundLightBrush}"
-                                CornerRadius="4" Padding="4,2" Margin="0,0,12,0"
-                                VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Lv." FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center" Margin="4,0,4,0"/>
-                                <Button x:Name="BtnLevelDown" Content="-" Width="24" Height="24"
-                                        Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                        Click="BtnLevelDown_Click"
-                                        ToolTip="Decrease level"/>
-                                <TextBox x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                         Foreground="{StaticResource AccentBrush}"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         VerticalAlignment="Center" Margin="8,0"
-                                         MinWidth="28" MaxWidth="40"
-                                         TextAlignment="Center"
-                                         VerticalContentAlignment="Center"
-                                         PreviewTextInput="TxtPlayerLevel_PreviewTextInput"
-                                         LostFocus="TxtPlayerLevel_LostFocus"
-                                         KeyDown="TxtPlayerLevel_KeyDown"/>
-                                <Button x:Name="BtnLevelUp" Content="+" Width="24" Height="24"
-                                        Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                        Click="BtnLevelUp_Click"
-                                        ToolTip="Increase level"/>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Profile Button -->
-                        <Button x:Name="BtnProfile" Content="▼ Profile" Padding="10,6"
+                        <!-- Profile chip: person glyph + level summary; opens the profile drawer -->
+                        <Button x:Name="BtnProfile" Padding="10,6"
                                 Margin="0,0,12,0" Click="BtnProfile_Click"
-                                ToolTip="Open profile settings (Edition, Prestige, Scav Rep, DSP)"/>
-
-                        <!-- Buy me a coffee -->
-                        <Button x:Name="BtnCoffee" Content="☕ Support" Padding="10,6"
-                                Margin="0,0,8,0" Click="BtnCoffee_Click"
-                                ToolTip="Buy me a coffee"/>
-
-                        <!-- Reset Progress -->
-                        <Button x:Name="BtnResetProgress" Content="↩ Reset" Padding="10,6"
-                                Margin="0,0,8,0" Click="BtnResetProgress_Click"
-                                ToolTip="Reset all progress"/>
+                                ToolTip="Player profile — level, Scav Rep, DSP, edition, prestige">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
+                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                <TextBlock x:Name="TxtProfileChipLevel" Text="Lv 15"
+                                           FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                <TextBlock x:Name="TxtProfileChipChevron" Text="&#xE70D;"
+                                           FontFamily="{StaticResource IconFont}"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                            </StackPanel>
+                        </Button>
 
                         <!-- Settings -->
-                        <Button x:Name="BtnSettings" Content="⚙" Padding="10,6"
-                                Margin="0,0,12,0" Click="BtnSettings_Click"
-                                FontSize="{DynamicResource FontSizeMedium}"
-                                ToolTip="Settings"/>
-
-                        <!-- Language Selector -->
-                        <ComboBox x:Name="CmbLanguage" Width="60"
-                                  SelectionChanged="CmbLanguage_SelectionChanged">
-                            <ComboBoxItem Content="EN" Tag="EN"/>
-                            <ComboBoxItem Content="KO" Tag="KO"/>
-                            <ComboBoxItem Content="JA" Tag="JA"/>
-                        </ComboBox>
+                        <Button x:Name="BtnSettings" Padding="10,6"
+                                Click="BtnSettings_Click"
+                                ToolTip="Settings">
+                            <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="{DynamicResource FontSizeMedium}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -220,25 +189,78 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Tab Navigation -->
+                    <!-- Tab Navigation. Labels are localized in code (UpdateAllLocalizedText).
+                         TabButtonStyle colors the checked tab by setting the RadioButton's
+                         Foreground, which explicit TextBlocks do NOT inherit (the implicit
+                         TextBlock style wins) — hence the RelativeSource Foreground bindings. -->
                     <Border x:Name="TabNavigation" Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,0">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="TabQuests" Content="Quests"
+                            <RadioButton x:Name="TabQuests"
                                          Style="{StaticResource TabButtonStyle}"
                                          IsChecked="True"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabHideout" Content="Hideout"
+                                         Checked="Tab_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="IcoTabQuests" Text="&#xE9D5;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="{DynamicResource FontSizeSmall}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                    <TextBlock x:Name="TxtTabQuests" Text="Quests" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="TabHideout"
                                          Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabItems" Content="Items"
+                                         Checked="Tab_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="IcoTabHideout" Text="&#xE80F;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="{DynamicResource FontSizeSmall}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                    <TextBlock x:Name="TxtTabHideout" Text="Hideout" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="TabItems"
                                          Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabCollector" Content="Collector"
+                                         Checked="Tab_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="IcoTabItems" Text="&#xE7B8;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="{DynamicResource FontSizeSmall}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                    <TextBlock x:Name="TxtTabItems" Text="Items" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="TabCollector"
                                          Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabMap" Content="Map"
+                                         Checked="Tab_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="IcoTabCollector" Text="&#xE734;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="{DynamicResource FontSizeSmall}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                    <TextBlock x:Name="TxtTabCollector" Text="Collector" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="TabMap"
                                          Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
+                                         Checked="Tab_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="IcoTabMap" Text="&#xE707;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="{DynamicResource FontSizeSmall}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                    <TextBlock x:Name="TxtTabMap" Text="Map" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                </StackPanel>
+                            </RadioButton>
                         </StackPanel>
                     </Border>
 
@@ -248,20 +270,52 @@
             </Grid>
         </Grid>
 
-        <!-- Profile Drawer Overlay (slides down from title bar) -->
+        <!-- Profile Drawer Overlay (slides down from title bar).
+             Top margin is set from TitleBar.ActualHeight in code so it tracks
+             font-size changes instead of hardcoding the bar height. -->
         <Border x:Name="ProfileDrawer" Grid.RowSpan="2" Background="{StaticResource BackgroundLightBrush}"
-                VerticalAlignment="Top" Margin="0,52,0,0"
+                VerticalAlignment="Top"
                 Visibility="Collapsed">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270" Opacity="0.3"/>
             </Border.Effect>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="16,12">
+                <!-- Player Level Control (moved here from the title bar) -->
+                <Border Background="{StaticResource BackgroundMediumBrush}"
+                        CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="TxtProfileLevelLabel" Text="Level" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Button x:Name="BtnLevelDown" Content="-" Width="24" Height="24"
+                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                Click="BtnLevelDown_Click"
+                                ToolTip="Decrease level"/>
+                        <TextBox x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                 Foreground="{StaticResource AccentBrush}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 VerticalAlignment="Center" Margin="8,0"
+                                 MinWidth="28" MaxWidth="40"
+                                 TextAlignment="Center"
+                                 VerticalContentAlignment="Center"
+                                 PreviewTextInput="TxtPlayerLevel_PreviewTextInput"
+                                 LostFocus="TxtPlayerLevel_LostFocus"
+                                 KeyDown="TxtPlayerLevel_KeyDown"/>
+                        <Button x:Name="BtnLevelUp" Content="+" Width="24" Height="24"
+                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                Click="BtnLevelUp_Click"
+                                ToolTip="Increase level"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Scav Rep Control -->
                 <Border Background="{StaticResource BackgroundMediumBrush}"
                         CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Scav Rep" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtScavRepLabel" Text="Scav Rep" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <Button x:Name="BtnScavRepDown" Content="-" Width="24" Height="24"
@@ -291,7 +345,7 @@
                         CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="DSP" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtDspLabel" Text="DSP" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <Button x:Name="BtnDsp0" Content="0" Width="24" Height="24"
@@ -318,7 +372,7 @@
                         CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Edition" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtEditionLabel" Text="Edition" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <CheckBox x:Name="ChkEodEdition" Content="EOD"
@@ -341,7 +395,7 @@
                         CornerRadius="4" Padding="8,6"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Prestige" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtPrestigeLabel" Text="Prestige" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <Button x:Name="BtnPrestigeDown" Content="-" Width="24" Height="24"
@@ -534,6 +588,58 @@
                                                 Click="BtnInProgressQuestInput_Click"/>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- Application Update Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtSettingsUpdateLabel" Text="Application Update"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                            <TextBlock x:Name="TxtSettingsVersion" Text="Current version: v0.0.0"
+                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                            <TextBlock x:Name="TxtSettingsUpdateStatus" Text=""
+                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="#4CAF50" Margin="8,0,0,0"/>
+                                            <TextBlock x:Name="TxtSettingsLastCheck" Text=""
+                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
+                                        </StackPanel>
+
+                                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                            <Button x:Name="BtnCheckUpdateSettings"
+                                                    Padding="12,8" Margin="0,0,8,8"
+                                                    Click="BtnCheckUpdateSettings_Click">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
+                                                               VerticalAlignment="Center" Margin="0,0,6,0"
+                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                    <TextBlock x:Name="TxtSettingsCheckUpdateLabel" Text="Check for Updates"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button x:Name="BtnUpdateAvailableSettings"
+                                                    Padding="12,8" Margin="0,0,0,8"
+                                                    Background="#4CAF50" Foreground="White"
+                                                    Click="BtnUpdateAvailableSettings_Click"
+                                                    Visibility="Collapsed">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}"
+                                                               VerticalAlignment="Center" Margin="0,0,6,0"
+                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                    <TextBlock x:Name="TxtSettingsUpdateToLabel" Text="Update to v0.0.0"
+                                                               FontWeight="SemiBold" VerticalAlignment="Center"
+                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
 
                             <!-- Right Column -->
@@ -639,6 +745,75 @@
                                         <Button x:Name="BtnDataMigration" Content="Import from Config..."
                                                 Padding="12,8" HorizontalAlignment="Left"
                                                 Click="BtnDataMigration_Click"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Language Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtLanguageLabel" Text="Language"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+                                        <ComboBox x:Name="CmbLanguage" Width="140" HorizontalAlignment="Left"
+                                                  SelectionChanged="CmbLanguage_SelectionChanged">
+                                            <ComboBoxItem Content="English" Tag="EN"/>
+                                            <ComboBoxItem Content="한국어" Tag="KO"/>
+                                            <ComboBoxItem Content="日本語" Tag="JA"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Support Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtSupportLabel" Text="Support"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+                                        <TextBlock x:Name="TxtSupportDesc"
+                                                   Text="If Tarkov Helper is useful to you, you can support its development."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,12"/>
+                                        <Button x:Name="BtnCoffee" Padding="12,8" HorizontalAlignment="Left"
+                                                Click="BtnCoffee_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xEB51;" FontFamily="{StaticResource IconFont}"
+                                                           VerticalAlignment="Center" Margin="0,0,6,0"
+                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                <TextBlock x:Name="TxtSupportButtonLabel" Text="Buy me a coffee"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Danger Zone Section -->
+                                <Border BorderBrush="#55F44336" BorderThickness="1" CornerRadius="4"
+                                        Margin="0,16,0,0" Padding="12">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}"
+                                                       FontSize="{DynamicResource FontSizeSmall}"
+                                                       Foreground="#EF5350" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="TxtDangerZoneLabel" Text="Danger Zone"
+                                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                       Foreground="#EF5350" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="TxtResetProgressDesc"
+                                                   Text="Reset all quest and hideout progress. This cannot be undone."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                        <Button x:Name="BtnResetProgress" Content="Reset All Progress"
+                                                Padding="12,8" HorizontalAlignment="Left"
+                                                Background="Transparent" BorderBrush="#EF5350" Foreground="#EF5350"
+                                                Click="BtnResetProgress_Click"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

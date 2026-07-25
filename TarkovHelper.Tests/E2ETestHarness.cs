@@ -187,6 +187,41 @@ internal sealed class AppDriver : IDisposable
         throw new TimeoutException($"combo '{comboAutomationId}' did not report a selection within 30s");
     }
 
+    /// <summary>Waits until the element exists in the UIA tree and returns it.</summary>
+    public AutomationElement WaitForElement(string automationId, int timeoutSeconds = 30)
+        => WaitForElement(automationId, DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds));
+
+    /// <summary>
+    /// Whether the element is currently in the UIA tree and on screen. Collapsed WPF
+    /// elements either drop out of the automation tree or report IsOffscreen depending
+    /// on the framework's peer behavior — this covers both.
+    /// </summary>
+    public bool IsElementVisible(string automationId)
+    {
+        var element = TryFindElement(automationId);
+        return element != null && !element.Current.IsOffscreen;
+    }
+
+    /// <summary>Polls until <see cref="IsElementVisible"/> reports the expected state.</summary>
+    public void WaitForElementVisibility(string automationId, bool visible, int timeoutSeconds = 30)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (IsElementVisible(automationId) == visible) return;
+            Thread.Sleep(250);
+        }
+        throw new TimeoutException(
+            $"element '{automationId}' did not become {(visible ? "visible" : "hidden")} within {timeoutSeconds}s");
+    }
+
+    /// <summary>Invokes a button-like element by AutomationId (InvokePattern).</summary>
+    public void InvokeElement(string automationId)
+    {
+        var element = WaitForElement(automationId);
+        ((InvokePattern)element.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+    }
+
     private static void Select(AutomationElement element)
         => ((SelectionItemPattern)element.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
 

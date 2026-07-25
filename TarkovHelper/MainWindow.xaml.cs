@@ -60,6 +60,19 @@ public partial class MainWindow : Window
         ProfileService.Instance.ActiveProfileChanged += (_, args) =>
             Dispatcher.Invoke(() => UpdateGameModeUI(args.GameMode, args.IsAutoDetected));
 
+        // Sync/raid status chip. Subscribed in the constructor (not Window_Loaded) so
+        // events fired during AutoStartLogMonitoring aren't missed. InvokeAsync (never
+        // a blocking Invoke): MonitoringStatusChanged is raised while LogSyncService
+        // holds _watcherLock, so a blocking dispatch from a background raise can
+        // deadlock against a UI-thread Start/StopMonitoring call taking the same lock.
+        _logSyncService.MonitoringStatusChanged += (_, _) => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+        EftRaidEventService.Instance.MonitoringStateChanged += (_, _) => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+        EftRaidEventService.Instance.RaidEvent += (_, _) => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+
+        // Keep the profile drawer anchored just below the title bar; the bar's height
+        // changes with the font-size setting, so the margin can't be hardcoded in XAML.
+        TitleBar.SizeChanged += (_, _) => ProfileDrawer.Margin = new Thickness(0, TitleBar.ActualHeight, 0, 0);
+
         SourceInitialized += OnSourceInitialized;
         Closing += OnWindowClosing;
     }
@@ -91,6 +104,34 @@ public partial class MainWindow : Window
     private void UpdateAllLocalizedText()
     {
         TxtWelcome.Text = _loc.Welcome;
+
+        // Tab labels
+        TxtTabQuests.Text = _loc.TabQuests;
+        TxtTabHideout.Text = _loc.TabHideout;
+        TxtTabItems.Text = _loc.TabItems;
+        TxtTabCollector.Text = _loc.TabCollector;
+        TxtTabMap.Text = _loc.TabMap;
+
+        // Title bar tooltips and badges
+        BtnPvP.ToolTip = _loc.HeaderPvpTooltip;
+        BtnPvE.ToolTip = _loc.HeaderPveTooltip;
+        TxtAutoIndicator.Text = _loc.HeaderAutoBadge;
+        TxtAutoIndicator.ToolTip = _loc.HeaderAutoBadgeTooltip;
+        BtnProfile.ToolTip = _loc.HeaderProfileTooltip;
+        BtnSettings.ToolTip = _loc.Settings;
+        ChipSyncStatus.ToolTip = _loc.SyncStatusTooltip;
+
+        // Profile drawer group labels
+        TxtProfileLevelLabel.Text = _loc.ProfileLevelLabel;
+        TxtScavRepLabel.Text = _loc.ProfileScavRepLabel;
+        TxtDspLabel.Text = _loc.ProfileDspLabel;
+        TxtEditionLabel.Text = _loc.ProfileEditionLabel;
+        TxtPrestigeLabel.Text = _loc.ProfilePrestigeLabel;
+
+        // Language-dependent composite texts (profile chip, status chip, version chip)
+        UpdatePlayerLevelUI();
+        UpdateSyncStatusChip();
+        UpdateVersionChipUI();
     }
 
     private void CmbLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -163,6 +204,10 @@ public partial class MainWindow : Window
 
         // Auto-start log monitoring if enabled
         AutoStartLogMonitoring();
+
+        // Initial paint of the sync/raid status chip (belt-and-braces: the
+        // constructor subscriptions already catch events raised during startup)
+        UpdateSyncStatusChip();
     }
 
     /// <summary>
@@ -522,11 +567,6 @@ public partial class MainWindow : Window
         }
     }
 
-    #region Player Level
-
-    /// <summary>
-    /// Update player level UI
-    /// </summary>
     #region Game Mode (PvP / PvE)
 
     private void BtnPvP_Click(object sender, RoutedEventArgs e)
@@ -554,10 +594,16 @@ public partial class MainWindow : Window
 
     #endregion
 
+    #region Player Level
+
+    /// <summary>
+    /// Update player level UI: the drawer stepper and the title-bar profile chip summary.
+    /// </summary>
     private void UpdatePlayerLevelUI()
     {
         var level = _settingsService.PlayerLevel;
         TxtPlayerLevel.Text = level.ToString();
+        TxtProfileChipLevel.Text = $"{_loc.HeaderLevelShort} {level}";
 
         // Disable buttons at min/max level
         BtnLevelDown.IsEnabled = level > SettingsService.MinPlayerLevel;
@@ -950,6 +996,9 @@ public partial class MainWindow : Window
 
     private bool _isProfileDrawerOpen = false;
 
+    private const string ChevronDownGlyph = "\uE70D";
+    private const string ChevronUpGlyph = "\uE70E";
+
     /// <summary>
     /// Toggle profile drawer visibility
     /// </summary>
@@ -957,7 +1006,17 @@ public partial class MainWindow : Window
     {
         _isProfileDrawerOpen = !_isProfileDrawerOpen;
         ProfileDrawer.Visibility = _isProfileDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
-        BtnProfile.Content = _isProfileDrawerOpen ? "▲ Profile" : "▼ Profile";
+        TxtProfileChipChevron.Text = _isProfileDrawerOpen ? ChevronUpGlyph : ChevronDownGlyph;
+    }
+
+    /// <summary>
+    /// Close the profile drawer (if open) and reset the chip chevron.
+    /// </summary>
+    private void CloseProfileDrawer()
+    {
+        _isProfileDrawerOpen = false;
+        ProfileDrawer.Visibility = Visibility.Collapsed;
+        TxtProfileChipChevron.Text = ChevronDownGlyph;
     }
 
     #endregion
@@ -1114,6 +1173,18 @@ public partial class MainWindow : Window
             AppLanguage.JA => "リセット",
             _ => "Reset"
         };
+
+        // Sections added by the top-bar redesign (named _loc properties, no inline switches)
+        TxtSettingsUpdateLabel.Text = _loc.SettingsUpdateLabel;
+        TxtSettingsCheckUpdateLabel.Text = _loc.SettingsCheckUpdateButton;
+        TxtLanguageLabel.Text = _loc.SettingsLanguageLabel;
+        TxtSupportLabel.Text = _loc.SettingsSupportLabel;
+        TxtSupportDesc.Text = _loc.SettingsSupportDesc;
+        TxtSupportButtonLabel.Text = _loc.SettingsSupportButton;
+        TxtDangerZoneLabel.Text = _loc.SettingsDangerZoneLabel;
+        TxtResetProgressDesc.Text = _loc.SettingsResetProgressDesc;
+        BtnResetProgress.Content = _loc.SettingsResetProgressButton;
+        UpdateSettingsUpdateSectionUI();
     }
 
     /// <summary>
@@ -1887,6 +1958,88 @@ public partial class MainWindow : Window
 
     #endregion
 
+    #region Sync Status Chip & Header Layout
+
+    private HeaderLayoutMode _currentHeaderMode = HeaderLayoutMode.Full;
+
+    /// <summary>
+    /// Render the title-bar sync/raid status chip from live monitoring state.
+    /// Keyed off IsMonitoring (not SettingsService.LogMonitoringEnabled) because the
+    /// Settings toggle starts/stops the watcher without persisting that setting.
+    /// </summary>
+    private void UpdateSyncStatusChip()
+    {
+        var raidService = EftRaidEventService.Instance;
+        var monitoring = _logSyncService.IsMonitoring || raidService.IsMonitoring;
+        var raidState = monitoring ? raidService.CurrentRaid?.State : null;
+
+        string text;
+        Color dotColor;
+        if (raidState == RaidState.InRaid)
+        {
+            text = _loc.SyncStatusInRaid;
+            dotColor = (Color)FindResource("AccentColor"); // gold — the "live" state
+        }
+        else if (raidState is RaidState.Matching or RaidState.Connecting)
+        {
+            text = _loc.SyncStatusMatching;
+            dotColor = Color.FromRgb(0xFF, 0xA7, 0x26); // amber
+        }
+        else if (monitoring)
+        {
+            text = _loc.SyncStatusWatching;
+            dotColor = Color.FromRgb(0x4C, 0xAF, 0x50); // green
+        }
+        else
+        {
+            text = _loc.SyncStatusOff;
+            dotColor = Color.FromRgb(0x75, 0x75, 0x75); // gray
+        }
+
+        SyncStatusDot.Fill = new SolidColorBrush(dotColor);
+        TxtSyncStatus.Text = text;
+    }
+
+    /// <summary>
+    /// Status chip click: open Settings (where monitoring is configured), so the
+    /// "off" state is directly actionable.
+    /// </summary>
+    private void ChipSyncStatus_Click(object sender, MouseButtonEventArgs e)
+    {
+        ShowSettingsOverlay();
+    }
+
+    /// <summary>
+    /// Degrade the header gracefully at narrow widths instead of clipping
+    /// (thresholds in <see cref="HeaderLayout"/>).
+    /// </summary>
+    private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyHeaderLayout(HeaderLayout.GetMode(e.NewSize.Width));
+    }
+
+    private void ApplyHeaderLayout(HeaderLayoutMode mode)
+    {
+        if (mode == _currentHeaderMode) return;
+        _currentHeaderMode = mode;
+
+        // Compact: status text collapses to its dot (tooltip remains) and the tab
+        // glyphs go (text-only tabs fit down to MinWidth 600; with glyphs they clip
+        // below ~1000). Minimal: the brand title goes too.
+        var full = mode == HeaderLayoutMode.Full;
+        TxtSyncStatus.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
+        var glyphVisibility = full ? Visibility.Visible : Visibility.Collapsed;
+        IcoTabQuests.Visibility = glyphVisibility;
+        IcoTabHideout.Visibility = glyphVisibility;
+        IcoTabItems.Visibility = glyphVisibility;
+        IcoTabCollector.Visibility = glyphVisibility;
+        IcoTabMap.Visibility = glyphVisibility;
+        TxtBrandTitle.Visibility = mode == HeaderLayoutMode.Minimal
+            ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    #endregion
+
     #region Full Screen Mode
 
     /// <summary>
@@ -1903,6 +2056,10 @@ public partial class MainWindow : Window
             // 타이틀 바와 탭 네비게이션 숨기기
             TitleBar.Visibility = Visibility.Collapsed;
             TabNavigation.Visibility = Visibility.Collapsed;
+
+            // The drawer is a sibling of MainContent and would float over the
+            // full-screen map if left open.
+            CloseProfileDrawer();
 
             // 전체화면 모드 진입
             WindowStyle = WindowStyle.None;
@@ -2047,14 +2204,20 @@ public partial class MainWindow : Window
     #region App Update
 
     /// <summary>
+    /// Whether the most recent update check ended in an error (colors the Settings status).
+    /// </summary>
+    private bool _lastUpdateCheckFailed;
+
+    /// <summary>
     /// Start app update service
     /// </summary>
     private void StartAppUpdateService()
     {
         var updateService = UpdateService.Instance;
 
-        // Initialize version display
-        TxtCurrentVersion.Text = $"v{updateService.CurrentVersion.ToString(3)}";
+        // Initialize version displays (title-bar chip + Settings section)
+        UpdateVersionChipUI();
+        UpdateSettingsUpdateSectionUI();
 
         // Subscribe to update events
         updateService.UpdateCheckStarted += OnUpdateCheckStarted;
@@ -2073,8 +2236,14 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            TxtUpdateChecking.Visibility = Visibility.Visible;
-            BtnCheckUpdate.IsEnabled = false;
+            BtnCheckUpdateSettings.IsEnabled = false;
+
+            // Passive progress hint on the idle chip only — when the green update
+            // pill is showing, a periodic re-check shouldn't disturb it.
+            if (UpdateService.Instance.AvailableUpdate == null)
+            {
+                TxtVersionChip.Text = _loc.HeaderChecking;
+            }
         });
     }
 
@@ -2085,63 +2254,92 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            TxtUpdateChecking.Visibility = Visibility.Collapsed;
-            BtnCheckUpdate.IsEnabled = true;
+            BtnCheckUpdateSettings.IsEnabled = true;
+            _lastUpdateCheckFailed = e.Error != null;
 
-            // Update last check time
-            UpdateLastCheckTimeDisplay();
+            UpdateVersionChipUI();
+            UpdateSettingsUpdateSectionUI();
 
             if (e.IsUpdateAvailable && e.UpdateInfo != null)
             {
-                // Show "Update to vX.X.X" button
-                TxtUpdateVersion.Text = $"v{e.UpdateInfo.Version}";
-                BtnUpdateAvailable.Visibility = Visibility.Visible;
-                BtnCheckUpdate.Visibility = Visibility.Collapsed;
-
-                // Update status to show update available
-                TxtUpdateStatus.Text = _loc.CurrentLanguage switch
-                {
-                    AppLanguage.KO => "업데이트 있음",
-                    AppLanguage.JA => "更新あり",
-                    _ => "Update available"
-                };
-                TxtUpdateStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFA726"));
-
                 _log.Info($"Update available: {e.UpdateInfo.Version}");
             }
             else if (e.Error != null)
             {
-                // Show error status
-                TxtUpdateStatus.Text = _loc.CurrentLanguage switch
-                {
-                    AppLanguage.KO => "확인 실패",
-                    AppLanguage.JA => "確認失敗",
-                    _ => "Check failed"
-                };
-                TxtUpdateStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF5350"));
-
                 _log.Warning($"Update check failed: {e.Error.Message}");
-            }
-            else
-            {
-                // No update available, keep showing "Check Update" button
-                BtnUpdateAvailable.Visibility = Visibility.Collapsed;
-                BtnCheckUpdate.Visibility = Visibility.Visible;
-
-                // Update status to show up to date
-                TxtUpdateStatus.Text = _loc.CurrentLanguage switch
-                {
-                    AppLanguage.KO => "최신 버전",
-                    AppLanguage.JA => "最新版",
-                    _ => "Up to date"
-                };
-                TxtUpdateStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4CAF50"));
             }
         });
     }
 
     /// <summary>
-    /// Update the last check time display
+    /// Render the title-bar version display: the passive version chip normally, the
+    /// green "Update vX.Y.Z" install pill when an update is available. Only the pill
+    /// is interactive — manual checks live in Settings.
+    /// </summary>
+    private void UpdateVersionChipUI()
+    {
+        var updateService = UpdateService.Instance;
+        var update = updateService.AvailableUpdate;
+
+        if (update != null)
+        {
+            var version = $"v{update.Version}";
+            TxtUpdatePillLabel.Text = string.Format(_loc.HeaderUpdateAvailableFormat, version);
+            BtnVersionChip.ToolTip = string.Format(_loc.HeaderVersionTooltipInstall, version);
+            BtnVersionChip.Visibility = Visibility.Visible;
+            ChipVersion.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            TxtVersionChip.Text = $"v{updateService.CurrentVersion.ToString(3)}";
+            ChipVersion.ToolTip = _loc.HeaderVersionTooltipIdle;
+            ChipVersion.Visibility = Visibility.Visible;
+            BtnVersionChip.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// Render the Settings overlay's Application Update section.
+    /// </summary>
+    private void UpdateSettingsUpdateSectionUI()
+    {
+        var updateService = UpdateService.Instance;
+        TxtSettingsVersion.Text = string.Format(_loc.SettingsCurrentVersionFormat,
+            $"v{updateService.CurrentVersion.ToString(3)}");
+
+        var update = updateService.AvailableUpdate;
+        if (update != null)
+        {
+            TxtSettingsUpdateStatus.Text = _loc.UpdateStatusAvailable;
+            TxtSettingsUpdateStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xA7, 0x26));
+            TxtSettingsUpdateToLabel.Text = string.Format(_loc.SettingsUpdateToFormat, $"v{update.Version}");
+            BtnUpdateAvailableSettings.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            BtnUpdateAvailableSettings.Visibility = Visibility.Collapsed;
+            if (_lastUpdateCheckFailed)
+            {
+                TxtSettingsUpdateStatus.Text = _loc.UpdateStatusFailed;
+                TxtSettingsUpdateStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50));
+            }
+            else if (updateService.LastCheckTime.HasValue)
+            {
+                TxtSettingsUpdateStatus.Text = _loc.UpdateStatusUpToDate;
+                TxtSettingsUpdateStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+            }
+            else
+            {
+                // No check has completed yet
+                TxtSettingsUpdateStatus.Text = "";
+            }
+        }
+
+        UpdateLastCheckTimeDisplay();
+    }
+
+    /// <summary>
+    /// Update the last-check time display in the Settings update section
     /// </summary>
     private void UpdateLastCheckTimeDisplay()
     {
@@ -2153,49 +2351,52 @@ public partial class MainWindow : Window
 
             if (timeAgo.TotalSeconds < 60)
             {
-                timeText = _loc.CurrentLanguage switch
-                {
-                    AppLanguage.KO => "방금 전",
-                    AppLanguage.JA => "たった今",
-                    _ => "just now"
-                };
+                timeText = _loc.TimeJustNow;
             }
             else if (timeAgo.TotalMinutes < 60)
             {
-                var mins = (int)timeAgo.TotalMinutes;
-                timeText = _loc.CurrentLanguage switch
-                {
-                    AppLanguage.KO => $"{mins}분 전",
-                    AppLanguage.JA => $"{mins}分前",
-                    _ => $"{mins}m ago"
-                };
+                timeText = string.Format(_loc.TimeMinutesAgoFormat, (int)timeAgo.TotalMinutes);
             }
             else
             {
                 timeText = lastCheck.Value.ToString("HH:mm");
             }
 
-            TxtLastCheckTime.Text = $"({timeText})";
+            TxtSettingsLastCheck.Text = $"({timeText})";
         }
         else
         {
-            TxtLastCheckTime.Text = "";
+            TxtSettingsLastCheck.Text = "";
         }
     }
 
     /// <summary>
-    /// Check Update button click
+    /// Update pill click: install the available update (the pill is only visible
+    /// when one exists).
     /// </summary>
-    private async void BtnCheckUpdate_Click(object sender, RoutedEventArgs e)
+    private void BtnVersionChip_Click(object sender, RoutedEventArgs e)
     {
-        _log.Debug("Manual update check triggered");
+        var updateInfo = UpdateService.Instance.AvailableUpdate;
+        if (updateInfo != null)
+        {
+            _log.Info($"User initiated update to version {updateInfo.Version}");
+            UpdateService.Instance.StartUpdate();
+        }
+    }
+
+    /// <summary>
+    /// Settings "Check for Updates" button click
+    /// </summary>
+    private async void BtnCheckUpdateSettings_Click(object sender, RoutedEventArgs e)
+    {
+        _log.Debug("Manual update check triggered from Settings");
         await UpdateService.Instance.CheckForUpdateAsync();
     }
 
     /// <summary>
-    /// Update Available button click - starts the update
+    /// Settings "Update to vX.Y.Z" button click - starts the update
     /// </summary>
-    private void BtnUpdateAvailable_Click(object sender, RoutedEventArgs e)
+    private void BtnUpdateAvailableSettings_Click(object sender, RoutedEventArgs e)
     {
         var updateInfo = UpdateService.Instance.AvailableUpdate;
         if (updateInfo != null)

@@ -9,6 +9,11 @@
         <!-- Custom Font -->
         <FontFamily x:Key="MaplestoryFont">pack://application:,,,/Fonts/#Maplestory</FontFamily>
 
+        <!-- Icon glyph font (composite: falls back to MDL2 Assets on Windows 10).
+             The implicit TextBlock style applies MaplestoryFont, so every glyph
+             TextBlock must set FontFamily="{StaticResource IconFont}" explicitly. -->
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
         <!-- Font Sizes (dynamic, updated from code) -->
         <sys:Double x:Key="BaseFontSize">18</sys:Double>
         <sys:Double x:Key="FontSizeTiny">12</sys:Double>
