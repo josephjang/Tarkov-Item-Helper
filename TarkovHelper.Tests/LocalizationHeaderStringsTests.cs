@@ -18,14 +18,19 @@ public class LocalizationHeaderStringsTests
         "TabQuests", "TabHideout", "TabItems", "TabCollector", "TabMap",
         // Title bar
         "HeaderPvpTooltip", "HeaderPveTooltip", "HeaderAutoBadge", "HeaderAutoBadgeTooltip",
-        "HeaderProfileTooltip", "HeaderLevelShort", "HeaderVersionTooltipIdle",
-        "HeaderVersionTooltipInstall", "HeaderUpdateAvailableFormat", "HeaderChecking",
+        "HeaderProfileTooltip", "HeaderProfileName", "HeaderLevelShort", "HeaderVersionTooltipIdle",
+        "HeaderVersionTooltipInstall", "HeaderVersionTooltipCheckFailed",
+        "HeaderUpdateAvailableFormat", "HeaderChecking",
         // Sync status chip
         "SyncStatusOff", "SyncStatusWatching", "SyncStatusMatching", "SyncStatusInRaid",
         "SyncStatusTooltip",
         // Profile drawer
         "ProfileLevelLabel", "ProfileScavRepLabel", "ProfileDspLabel",
         "ProfileEditionLabel", "ProfilePrestigeLabel",
+        // Settings pre-existing rows (migrated from inline switches; the overlay
+        // title reuses the Core "Settings" property)
+        "Settings", "SettingsLogFolderLabel", "SettingsLogFolderDesc",
+        "SettingsAutoDetectButton", "SettingsBrowseButton", "SettingsResetLogFolderButton",
         // Settings additions
         "SettingsLanguageLabel", "SettingsSupportLabel", "SettingsSupportDesc",
         "SettingsSupportButton", "SettingsUpdateLabel", "SettingsCurrentVersionFormat",

@@ -25,6 +25,7 @@ namespace TarkovHelper.Services
         private bool _isChecking;
         private UpdateInfo? _availableUpdate;
         private DateTime? _lastCheckTime;
+        private Exception? _lastCheckError;
 
         /// <summary>
         /// Fired when update check is completed
@@ -55,6 +56,18 @@ namespace TarkovHelper.Services
         /// Last time update was checked
         /// </summary>
         public DateTime? LastCheckTime => _lastCheckTime;
+
+        /// <summary>
+        /// Error from the most recent completed check; null when it succeeded or no
+        /// check has run yet. Lives here (not on UI subscribers) so every consumer
+        /// sees the same success/fail/never-checked state.
+        /// </summary>
+        public Exception? LastCheckError => _lastCheckError;
+
+        /// <summary>
+        /// Whether the most recent completed update check failed.
+        /// </summary>
+        public bool LastCheckFailed => _lastCheckError != null;
 
         private UpdateService()
         {
@@ -121,6 +134,7 @@ namespace TarkovHelper.Services
                 }
 
                 _lastCheckTime = DateTime.Now;
+                _lastCheckError = null;
                 UpdateCheckCompleted?.Invoke(this, new UpdateCheckEventArgs(_availableUpdate, null));
                 return _availableUpdate;
             }
@@ -128,6 +142,9 @@ namespace TarkovHelper.Services
             {
                 _log.Error("Failed to check for updates", ex);
                 _lastCheckTime = DateTime.Now;
+                _lastCheckError = ex;
+                // Note: _availableUpdate is intentionally left as-is — an update found by an
+                // earlier successful check remains installable while re-checks are failing.
                 UpdateCheckCompleted?.Invoke(this, new UpdateCheckEventArgs(null, ex));
                 return null;
             }
@@ -160,6 +177,30 @@ namespace TarkovHelper.Services
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
             _ = CheckForUpdateAsync();
+        }
+
+        /// <summary>
+        /// Formats a version for display as "vX.Y.Z" (falling back to "vX.Y" for a
+        /// two-part version, where ToString(3) would throw). Single source for every
+        /// version string the UI shows, so the chip and the Settings section can't
+        /// format the same version two different ways.
+        /// </summary>
+        public static string FormatVersion(Version version)
+            => $"v{(version.Build >= 0 ? version.ToString(3) : version.ToString(2))}";
+
+        /// <summary>
+        /// Pure mapping from update-service state to the status the UI should report.
+        /// Order matters: an in-progress check wins, then a failure — a failed re-check
+        /// must stay visible even while an update found earlier remains installable.
+        /// </summary>
+        public static UpdateStatusKind GetStatusKind(
+            bool isChecking, bool lastCheckFailed, bool updateAvailable, bool hasCompletedCheck)
+        {
+            if (isChecking) return UpdateStatusKind.Checking;
+            if (lastCheckFailed) return UpdateStatusKind.Failed;
+            if (updateAvailable) return UpdateStatusKind.UpdateAvailable;
+            if (hasCompletedCheck) return UpdateStatusKind.UpToDate;
+            return UpdateStatusKind.None;
         }
 
         internal static UpdateInfo? ParseUpdateXml(string xmlContent)
@@ -205,6 +246,27 @@ namespace TarkovHelper.Services
                 return null;
             }
         }
+    }
+
+    /// <summary>
+    /// Update status to display, derived by <see cref="UpdateService.GetStatusKind"/>.
+    /// </summary>
+    public enum UpdateStatusKind
+    {
+        /// <summary>No check has completed yet.</summary>
+        None,
+
+        /// <summary>A check is currently running.</summary>
+        Checking,
+
+        /// <summary>The most recent check failed (an earlier-found update may still exist).</summary>
+        Failed,
+
+        /// <summary>The most recent check succeeded and an update is available.</summary>
+        UpdateAvailable,
+
+        /// <summary>The most recent check succeeded and the app is current.</summary>
+        UpToDate
     }
 
     /// <summary>
