@@ -12,6 +12,14 @@
         SizeChanged="Window_SizeChanged">
 
     <Window.Resources>
+        <!-- Separator scaffold shared by every stacked Settings-overlay section -->
+        <Style x:Key="SettingsSectionBorderStyle" TargetType="Border">
+            <Setter Property="BorderThickness" Value="0,1,0,0"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Margin" Value="0,12,0,0"/>
+            <Setter Property="Padding" Value="0,16,0,0"/>
+        </Style>
+
         <!-- PvP/PvE game mode toggle button -->
         <Style x:Key="GameModeToggleStyle" TargetType="ToggleButton">
             <Setter Property="Background" Value="Transparent"/>
@@ -84,8 +92,9 @@
                         </Border>
                         <Button x:Name="BtnVersionChip"
                                 Padding="8,3" Margin="12,0,0,0"
-                                Background="#4CAF50" Foreground="White"
-                                Click="BtnVersionChip_Click"
+                                Background="{StaticResource SuccessBrush}" Foreground="White"
+                                Click="InstallUpdate_Click"
+                                AutomationProperties.Name="Install update"
                                 Visibility="Collapsed">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE896;"
@@ -103,21 +112,24 @@
 
                     <!-- Right Side Controls -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Sync / raid status chip: off / watching logs / matching / in raid -->
-                        <Border x:Name="ChipSyncStatus" Background="{StaticResource BackgroundLightBrush}"
-                                CornerRadius="4" Padding="8,5" Margin="0,0,12,0"
-                                VerticalAlignment="Center" Cursor="Hand"
-                                MouseLeftButtonUp="ChipSyncStatus_Click"
+                        <!-- Sync / raid status chip: off / watching logs / matching / in raid.
+                             A real Button (not a Border with a mouse handler) so it gets keyboard
+                             focus, a UIA automation peer with InvokePattern, and press-capture
+                             click semantics for free. -->
+                        <Button x:Name="ChipSyncStatus" Padding="8,5" Margin="0,0,12,0"
+                                VerticalAlignment="Center"
+                                Click="ChipSyncStatus_Click"
+                                AutomationProperties.Name="Sync status"
                                 ToolTip="Game-log monitoring status — click to open Settings">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse x:Name="SyncStatusDot" Width="8" Height="8"
-                                         Fill="#757575" VerticalAlignment="Center"/>
+                                         Fill="{StaticResource NeutralBrush}" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="TxtSyncStatus" Text="Sync off"
                                            FontSize="{DynamicResource FontSizeTiny}"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                           VerticalAlignment="Center" Margin="6,0,0,0"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                             </StackPanel>
-                        </Border>
+                        </Button>
 
                         <!-- Game Mode Toggle (PvP / PvE) -->
                         <Border Background="{StaticResource BackgroundLightBrush}"
@@ -142,6 +154,7 @@
                         <!-- Profile chip: person glyph + level summary; opens the profile drawer -->
                         <Button x:Name="BtnProfile" Padding="10,6"
                                 Margin="0,0,12,0" Click="BtnProfile_Click"
+                                AutomationProperties.Name="Player profile"
                                 ToolTip="Player profile — level, Scav Rep, DSP, edition, prestige">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
@@ -163,6 +176,7 @@
                         <!-- Settings -->
                         <Button x:Name="BtnSettings" Padding="10,6"
                                 Click="BtnSettings_Click"
+                                AutomationProperties.Name="Settings"
                                 ToolTip="Settings">
                             <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}"
                                        FontSize="{DynamicResource FontSizeMedium}"
@@ -198,6 +212,7 @@
                             <RadioButton x:Name="TabQuests"
                                          Style="{StaticResource TabButtonStyle}"
                                          IsChecked="True"
+                                         AutomationProperties.Name="Quests"
                                          Checked="Tab_Checked">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="IcoTabQuests" Text="&#xE9D5;" FontFamily="{StaticResource IconFont}"
@@ -211,6 +226,7 @@
                             </RadioButton>
                             <RadioButton x:Name="TabHideout"
                                          Style="{StaticResource TabButtonStyle}"
+                                         AutomationProperties.Name="Hideout"
                                          Checked="Tab_Checked">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="IcoTabHideout" Text="&#xE80F;" FontFamily="{StaticResource IconFont}"
@@ -224,6 +240,7 @@
                             </RadioButton>
                             <RadioButton x:Name="TabItems"
                                          Style="{StaticResource TabButtonStyle}"
+                                         AutomationProperties.Name="Items"
                                          Checked="Tab_Checked">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="IcoTabItems" Text="&#xE7B8;" FontFamily="{StaticResource IconFont}"
@@ -237,6 +254,7 @@
                             </RadioButton>
                             <RadioButton x:Name="TabCollector"
                                          Style="{StaticResource TabButtonStyle}"
+                                         AutomationProperties.Name="Collector"
                                          Checked="Tab_Checked">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="IcoTabCollector" Text="&#xE734;" FontFamily="{StaticResource IconFont}"
@@ -250,6 +268,7 @@
                             </RadioButton>
                             <RadioButton x:Name="TabMap"
                                          Style="{StaticResource TabButtonStyle}"
+                                         AutomationProperties.Name="Map"
                                          Checked="Tab_Checked">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="IcoTabMap" Text="&#xE707;" FontFamily="{StaticResource IconFont}"
@@ -544,8 +563,7 @@
                                 </WrapPanel>
 
                                 <!-- Quest Sync Section -->
-                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                <Border Style="{StaticResource SettingsSectionBorderStyle}">
                                     <StackPanel>
                                         <TextBlock x:Name="TxtQuestSyncLabel" Text="Quest Log Sync"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
@@ -590,8 +608,7 @@
                                 </Border>
 
                                 <!-- Application Update Section -->
-                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                <Border Style="{StaticResource SettingsSectionBorderStyle}">
                                     <StackPanel>
                                         <TextBlock x:Name="TxtSettingsUpdateLabel" Text="Application Update"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
@@ -604,7 +621,7 @@
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                             <TextBlock x:Name="TxtSettingsUpdateStatus" Text=""
                                                        FontSize="{DynamicResource FontSizeXSmall}"
-                                                       Foreground="#4CAF50" Margin="8,0,0,0"/>
+                                                       Foreground="{StaticResource SuccessBrush}" Margin="8,0,0,0"/>
                                             <TextBlock x:Name="TxtSettingsLastCheck" Text=""
                                                        FontSize="{DynamicResource FontSizeXSmall}"
                                                        Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
@@ -613,6 +630,7 @@
                                         <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
                                             <Button x:Name="BtnCheckUpdateSettings"
                                                     Padding="12,8" Margin="0,0,8,8"
+                                                    AutomationProperties.Name="Check for updates"
                                                     Click="BtnCheckUpdateSettings_Click">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
@@ -625,8 +643,9 @@
                                             </Button>
                                             <Button x:Name="BtnUpdateAvailableSettings"
                                                     Padding="12,8" Margin="0,0,0,8"
-                                                    Background="#4CAF50" Foreground="White"
-                                                    Click="BtnUpdateAvailableSettings_Click"
+                                                    Background="{StaticResource SuccessBrush}" Foreground="White"
+                                                    AutomationProperties.Name="Install update"
+                                                    Click="InstallUpdate_Click"
                                                     Visibility="Collapsed">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}"
@@ -678,8 +697,7 @@
                                 </WrapPanel>
 
                                 <!-- Font Size Section -->
-                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                <Border Style="{StaticResource SettingsSectionBorderStyle}">
                                     <StackPanel>
                                         <TextBlock Text="Font Size"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
@@ -727,8 +745,7 @@
                                 </Border>
 
                                 <!-- Data Migration Section -->
-                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                <Border Style="{StaticResource SettingsSectionBorderStyle}">
                                     <StackPanel>
                                         <TextBlock x:Name="TxtDataMigrationLabel" Text="Data Migration"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
@@ -749,8 +766,7 @@
                                 </Border>
 
                                 <!-- Language Section -->
-                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                <Border Style="{StaticResource SettingsSectionBorderStyle}">
                                     <StackPanel>
                                         <TextBlock x:Name="TxtLanguageLabel" Text="Language"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
@@ -766,8 +782,7 @@
                                 </Border>
 
                                 <!-- Support Section -->
-                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                <Border Style="{StaticResource SettingsSectionBorderStyle}">
                                     <StackPanel>
                                         <TextBlock x:Name="TxtSupportLabel" Text="Support"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
@@ -780,6 +795,7 @@
                                                    TextWrapping="Wrap"
                                                    Margin="0,0,0,12"/>
                                         <Button x:Name="BtnCoffee" Padding="12,8" HorizontalAlignment="Left"
+                                                AutomationProperties.Name="Buy me a coffee"
                                                 Click="BtnCoffee_Click">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xEB51;" FontFamily="{StaticResource IconFont}"
@@ -800,10 +816,10 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                             <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}"
                                                        FontSize="{DynamicResource FontSizeSmall}"
-                                                       Foreground="#EF5350" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                       Foreground="{StaticResource ErrorBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                             <TextBlock x:Name="TxtDangerZoneLabel" Text="Danger Zone"
                                                        FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                                       Foreground="#EF5350" VerticalAlignment="Center"/>
+                                                       Foreground="{StaticResource ErrorBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <TextBlock x:Name="TxtResetProgressDesc"
                                                    Text="Reset all quest and hideout progress. This cannot be undone."
@@ -812,7 +828,7 @@
                                                    TextWrapping="Wrap" Margin="0,0,0,12"/>
                                         <Button x:Name="BtnResetProgress" Content="Reset All Progress"
                                                 Padding="12,8" HorizontalAlignment="Left"
-                                                Background="Transparent" BorderBrush="#EF5350" Foreground="#EF5350"
+                                                Background="Transparent" BorderBrush="{StaticResource ErrorBrush}" Foreground="{StaticResource ErrorBrush}"
                                                 Click="BtnResetProgress_Click"/>
                                     </StackPanel>
                                 </Border>

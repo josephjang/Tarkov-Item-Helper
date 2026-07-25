@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -61,13 +62,16 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(() => UpdateGameModeUI(args.GameMode, args.IsAutoDetected));
 
         // Sync/raid status chip. Subscribed in the constructor (not Window_Loaded) so
-        // events fired during AutoStartLogMonitoring aren't missed. InvokeAsync (never
-        // a blocking Invoke): MonitoringStatusChanged is raised while LogSyncService
-        // holds _watcherLock, so a blocking dispatch from a background raise can
-        // deadlock against a UI-thread Start/StopMonitoring call taking the same lock.
-        _logSyncService.MonitoringStatusChanged += (_, _) => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
-        EftRaidEventService.Instance.MonitoringStateChanged += (_, _) => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
-        EftRaidEventService.Instance.RaidEvent += (_, _) => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+        // events fired during AutoStartLogMonitoring aren't missed; named handlers so
+        // OnWindowClosing can unsubscribe them from these app-lifetime singletons
+        // (a background raise after close must not dispatch against a torn-down
+        // window). InvokeAsync (never a blocking Invoke): MonitoringStatusChanged is
+        // raised while LogSyncService holds _watcherLock, so a blocking dispatch from
+        // a background raise can deadlock against a UI-thread Start/StopMonitoring
+        // call taking the same lock.
+        _logSyncService.MonitoringStatusChanged += OnLogMonitoringStatusChanged;
+        EftRaidEventService.Instance.MonitoringStateChanged += OnRaidMonitoringStateChanged;
+        EftRaidEventService.Instance.RaidEvent += OnRaidEvent;
 
         // Keep the profile drawer anchored just below the title bar; the bar's height
         // changes with the font-size setting, so the margin can't be hardcoded in XAML.
@@ -99,6 +103,12 @@ public partial class MainWindow : Window
     private void OnLanguageChanged(object? sender, AppLanguage e)
     {
         UpdateAllLocalizedText();
+
+        // The language combo lives inside the Settings overlay, so that overlay is
+        // typically open (and being looked at) when the language changes — refresh its
+        // strings immediately instead of leaving them stale until the next open.
+        // Cheap and safe when the overlay is closed: it only assigns text properties.
+        UpdateSettingsLocalizedText();
     }
 
     private void UpdateAllLocalizedText()
@@ -111,6 +121,17 @@ public partial class MainWindow : Window
         TxtTabItems.Text = _loc.TabItems;
         TxtTabCollector.Text = _loc.TabCollector;
         TxtTabMap.Text = _loc.TabMap;
+
+        // UIA names for screen readers: panel content replaced the old string Content,
+        // which is what previously supplied these controls' automation Name (WPF does
+        // not synthesize a Name from TextBlocks inside panel content).
+        AutomationProperties.SetName(TabQuests, _loc.TabQuests);
+        AutomationProperties.SetName(TabHideout, _loc.TabHideout);
+        AutomationProperties.SetName(TabItems, _loc.TabItems);
+        AutomationProperties.SetName(TabCollector, _loc.TabCollector);
+        AutomationProperties.SetName(TabMap, _loc.TabMap);
+        AutomationProperties.SetName(BtnProfile, _loc.HeaderProfileName);
+        AutomationProperties.SetName(BtnSettings, _loc.Settings);
 
         // Title bar tooltips and badges
         BtnPvP.ToolTip = _loc.HeaderPvpTooltip;
@@ -527,6 +548,16 @@ public partial class MainWindow : Window
             // "죽은 탭"이 된다. 클릭을 기억해 두었다가 로딩이 끝나는 즉시 반영한다.
             _pendingTabDuringLoad = sender;
             return;
+        }
+
+        // A tab switch navigates away from the header context, so dismiss the profile
+        // drawer — otherwise the centered popover keeps floating over the newly
+        // selected tab's content. Matches the close-on-Settings / close-on-full-screen
+        // policy. Null check: TabQuests's IsChecked="True" fires this handler during
+        // InitializeComponent, before ProfileDrawer (declared later in the XAML) exists.
+        if (ProfileDrawer != null)
+        {
+            CloseProfileDrawer();
         }
 
         if (sender == TabQuests && _questListPage != null)
@@ -994,19 +1025,23 @@ public partial class MainWindow : Window
 
     #region Profile Drawer
 
-    private bool _isProfileDrawerOpen = false;
-
     private const string ChevronDownGlyph = "\uE70D";
     private const string ChevronUpGlyph = "\uE70E";
+
+    /// <summary>
+    /// Open-state is derived from the drawer's actual Visibility (compute-don't-store)
+    /// so no tracking flag can fall out of sync with the control.
+    /// </summary>
+    private bool IsProfileDrawerOpen => ProfileDrawer.Visibility == Visibility.Visible;
 
     /// <summary>
     /// Toggle profile drawer visibility
     /// </summary>
     private void BtnProfile_Click(object sender, RoutedEventArgs e)
     {
-        _isProfileDrawerOpen = !_isProfileDrawerOpen;
-        ProfileDrawer.Visibility = _isProfileDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
-        TxtProfileChipChevron.Text = _isProfileDrawerOpen ? ChevronUpGlyph : ChevronDownGlyph;
+        var open = !IsProfileDrawerOpen;
+        ProfileDrawer.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        TxtProfileChipChevron.Text = open ? ChevronUpGlyph : ChevronDownGlyph;
     }
 
     /// <summary>
@@ -1014,7 +1049,6 @@ public partial class MainWindow : Window
     /// </summary>
     private void CloseProfileDrawer()
     {
-        _isProfileDrawerOpen = false;
         ProfileDrawer.Visibility = Visibility.Collapsed;
         TxtProfileChipChevron.Text = ChevronDownGlyph;
     }
@@ -1036,6 +1070,10 @@ public partial class MainWindow : Window
     /// </summary>
     private void ShowSettingsOverlay()
     {
+        // The drawer would otherwise stay open (with a stale up-chevron) underneath
+        // the overlay scrim and still be open when Settings closes.
+        CloseProfileDrawer();
+
         UpdateSettingsUI();
         SettingsOverlay.Visibility = Visibility.Visible;
 
@@ -1132,47 +1170,14 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateSettingsLocalizedText()
     {
-        TxtSettingsTitle.Text = _loc.CurrentLanguage switch
-        {
-            AppLanguage.KO => "설정",
-            AppLanguage.JA => "設定",
-            _ => "Settings"
-        };
-
-        TxtLogFolderLabel.Text = _loc.CurrentLanguage switch
-        {
-            AppLanguage.KO => "Tarkov 로그 폴더",
-            AppLanguage.JA => "Tarkovログフォルダ",
-            _ => "Tarkov Log Folder"
-        };
-
-        TxtLogFolderDesc.Text = _loc.CurrentLanguage switch
-        {
-            AppLanguage.KO => "자동 퀘스트 완료 추적을 위해 Tarkov의 Logs 폴더 경로를 설정하세요.",
-            AppLanguage.JA => "自動クエスト完了追跡のために、TarkovのLogsフォルダのパスを設定してください。",
-            _ => "Set the path to Tarkov's Logs folder for automatic quest completion tracking."
-        };
-
-        BtnAutoDetect.Content = _loc.CurrentLanguage switch
-        {
-            AppLanguage.KO => "자동 감지",
-            AppLanguage.JA => "自動検出",
-            _ => "Auto Detect"
-        };
-
-        BtnBrowseLogFolder.Content = _loc.CurrentLanguage switch
-        {
-            AppLanguage.KO => "찾아보기...",
-            AppLanguage.JA => "参照...",
-            _ => "Browse..."
-        };
-
-        BtnResetLogFolder.Content = _loc.CurrentLanguage switch
-        {
-            AppLanguage.KO => "초기화",
-            AppLanguage.JA => "リセット",
-            _ => "Reset"
-        };
+        // Pre-existing rows, migrated to named _loc properties so this whole method
+        // uses one localization idiom and the completeness test guards every string.
+        TxtSettingsTitle.Text = _loc.Settings;
+        TxtLogFolderLabel.Text = _loc.SettingsLogFolderLabel;
+        TxtLogFolderDesc.Text = _loc.SettingsLogFolderDesc;
+        BtnAutoDetect.Content = _loc.SettingsAutoDetectButton;
+        BtnBrowseLogFolder.Content = _loc.SettingsBrowseButton;
+        BtnResetLogFolder.Content = _loc.SettingsResetLogFolderButton;
 
         // Sections added by the top-bar redesign (named _loc properties, no inline switches)
         TxtSettingsUpdateLabel.Text = _loc.SettingsUpdateLabel;
@@ -1184,6 +1189,12 @@ public partial class MainWindow : Window
         TxtDangerZoneLabel.Text = _loc.SettingsDangerZoneLabel;
         TxtResetProgressDesc.Text = _loc.SettingsResetProgressDesc;
         BtnResetProgress.Content = _loc.SettingsResetProgressButton;
+
+        // UIA names for the buttons whose visible label lives in panel content
+        // (string-Content buttons like BtnResetProgress get their Name for free)
+        AutomationProperties.SetName(BtnCoffee, _loc.SettingsSupportButton);
+        AutomationProperties.SetName(BtnCheckUpdateSettings, _loc.SettingsCheckUpdateButton);
+
         UpdateSettingsUpdateSectionUI();
     }
 
@@ -1962,8 +1973,31 @@ public partial class MainWindow : Window
 
     private HeaderLayoutMode _currentHeaderMode = HeaderLayoutMode.Full;
 
+    // Semantic status brushes resolved once from the App.xaml palette. Reusing the
+    // shared brush instances makes repeated chip renders allocation-free: assigning
+    // the same instance to Fill/Foreground is a no-op for WPF.
+    private Brush? _successBrush, _warningBrush, _errorBrush, _neutralBrush, _accentBrush, _textSecondaryBrush;
+    private Brush SuccessStatusBrush => _successBrush ??= (Brush)FindResource("SuccessBrush");
+    private Brush WarningStatusBrush => _warningBrush ??= (Brush)FindResource("WarningBrush");
+    private Brush ErrorStatusBrush => _errorBrush ??= (Brush)FindResource("ErrorBrush");
+    private Brush NeutralStatusBrush => _neutralBrush ??= (Brush)FindResource("NeutralBrush");
+    private Brush AccentStatusBrush => _accentBrush ??= (Brush)FindResource("AccentBrush");
+    private Brush TextSecondaryStatusBrush => _textSecondaryBrush ??= (Brush)FindResource("TextSecondaryBrush");
+
+    // Named handlers (not lambdas) so OnWindowClosing can unsubscribe them from the
+    // app-lifetime singleton services.
+    private void OnLogMonitoringStatusChanged(object? sender, bool isMonitoring)
+        => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+
+    private void OnRaidMonitoringStateChanged(object? sender, bool isMonitoring)
+        => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+
+    private void OnRaidEvent(object? sender, EftRaidEventArgs e)
+        => Dispatcher.InvokeAsync(UpdateSyncStatusChip);
+
     /// <summary>
-    /// Render the title-bar sync/raid status chip from live monitoring state.
+    /// Render the title-bar sync/raid status chip from live monitoring state
+    /// (state mapping in <see cref="HeaderSyncStatus"/>, unit-tested).
     /// Keyed off IsMonitoring (not SettingsService.LogMonitoringEnabled) because the
     /// Settings toggle starts/stops the watcher without persisting that setting.
     /// </summary>
@@ -1971,40 +2005,32 @@ public partial class MainWindow : Window
     {
         var raidService = EftRaidEventService.Instance;
         var monitoring = _logSyncService.IsMonitoring || raidService.IsMonitoring;
-        var raidState = monitoring ? raidService.CurrentRaid?.State : null;
+        var state = HeaderSyncStatus.GetState(monitoring, raidService.CurrentRaid?.State);
 
-        string text;
-        Color dotColor;
-        if (raidState == RaidState.InRaid)
+        var text = state switch
         {
-            text = _loc.SyncStatusInRaid;
-            dotColor = (Color)FindResource("AccentColor"); // gold — the "live" state
-        }
-        else if (raidState is RaidState.Matching or RaidState.Connecting)
-        {
-            text = _loc.SyncStatusMatching;
-            dotColor = Color.FromRgb(0xFF, 0xA7, 0x26); // amber
-        }
-        else if (monitoring)
-        {
-            text = _loc.SyncStatusWatching;
-            dotColor = Color.FromRgb(0x4C, 0xAF, 0x50); // green
-        }
-        else
-        {
-            text = _loc.SyncStatusOff;
-            dotColor = Color.FromRgb(0x75, 0x75, 0x75); // gray
-        }
+            SyncChipState.InRaid => _loc.SyncStatusInRaid,
+            SyncChipState.Matching => _loc.SyncStatusMatching,
+            SyncChipState.Watching => _loc.SyncStatusWatching,
+            _ => _loc.SyncStatusOff,
+        };
 
-        SyncStatusDot.Fill = new SolidColorBrush(dotColor);
+        SyncStatusDot.Fill = state switch
+        {
+            SyncChipState.InRaid => AccentStatusBrush, // gold — the "live" state
+            SyncChipState.Matching => WarningStatusBrush,
+            SyncChipState.Watching => SuccessStatusBrush,
+            _ => NeutralStatusBrush,
+        };
         TxtSyncStatus.Text = text;
+        AutomationProperties.SetName(ChipSyncStatus, text);
     }
 
     /// <summary>
     /// Status chip click: open Settings (where monitoring is configured), so the
     /// "off" state is directly actionable.
     /// </summary>
-    private void ChipSyncStatus_Click(object sender, MouseButtonEventArgs e)
+    private void ChipSyncStatus_Click(object sender, RoutedEventArgs e)
     {
         ShowSettingsOverlay();
     }
@@ -2018,22 +2044,28 @@ public partial class MainWindow : Window
         ApplyHeaderLayout(HeaderLayout.GetMode(e.NewSize.Width));
     }
 
+    // All tab glyphs, so narrow-width degradation toggles them as one set — a new
+    // tab's glyph only needs to be added here to participate.
+    private TextBlock[]? _tabGlyphs;
+
     private void ApplyHeaderLayout(HeaderLayoutMode mode)
     {
         if (mode == _currentHeaderMode) return;
         _currentHeaderMode = mode;
 
         // Compact: status text collapses to its dot (tooltip remains) and the tab
-        // glyphs go (text-only tabs fit down to MinWidth 600; with glyphs they clip
-        // below ~1000). Minimal: the brand title goes too.
+        // glyphs go (at the default font size, text-only tabs fit down to MinWidth 600
+        // — JA is within a few px of the limit, and font sizes near the 28 max can
+        // still clip at 600; with glyphs they clip below ~1000). Minimal: the brand
+        // title goes too.
         var full = mode == HeaderLayoutMode.Full;
         TxtSyncStatus.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
         var glyphVisibility = full ? Visibility.Visible : Visibility.Collapsed;
-        IcoTabQuests.Visibility = glyphVisibility;
-        IcoTabHideout.Visibility = glyphVisibility;
-        IcoTabItems.Visibility = glyphVisibility;
-        IcoTabCollector.Visibility = glyphVisibility;
-        IcoTabMap.Visibility = glyphVisibility;
+        _tabGlyphs ??= new[] { IcoTabQuests, IcoTabHideout, IcoTabItems, IcoTabCollector, IcoTabMap };
+        foreach (var glyph in _tabGlyphs)
+        {
+            glyph.Visibility = glyphVisibility;
+        }
         TxtBrandTitle.Visibility = mode == HeaderLayoutMode.Minimal
             ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -2204,11 +2236,6 @@ public partial class MainWindow : Window
     #region App Update
 
     /// <summary>
-    /// Whether the most recent update check ended in an error (colors the Settings status).
-    /// </summary>
-    private bool _lastUpdateCheckFailed;
-
-    /// <summary>
     /// Start app update service
     /// </summary>
     private void StartAppUpdateService()
@@ -2238,12 +2265,10 @@ public partial class MainWindow : Window
         {
             BtnCheckUpdateSettings.IsEnabled = false;
 
-            // Passive progress hint on the idle chip only — when the green update
-            // pill is showing, a periodic re-check shouldn't disturb it.
-            if (UpdateService.Instance.AvailableUpdate == null)
-            {
-                TxtVersionChip.Text = _loc.HeaderChecking;
-            }
+            // Both renderers read UpdateService.IsChecking themselves, so the whole
+            // checking state (chip hint + Settings status) comes from one place.
+            UpdateVersionChipUI();
+            UpdateSettingsUpdateSectionUI();
         });
     }
 
@@ -2255,7 +2280,6 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             BtnCheckUpdateSettings.IsEnabled = true;
-            _lastUpdateCheckFailed = e.Error != null;
 
             UpdateVersionChipUI();
             UpdateSettingsUpdateSectionUI();
@@ -2272,9 +2296,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Render the title-bar version display: the passive version chip normally, the
-    /// green "Update vX.Y.Z" install pill when an update is available. Only the pill
-    /// is interactive — manual checks live in Settings.
+    /// Render the title-bar version display from UpdateService state — the single
+    /// writer for the chip. Update available: the green "Update vX.Y.Z" install pill.
+    /// Otherwise the passive chip: "Checking…" while a check runs, the version tinted
+    /// red with an explanatory tooltip when the last check failed (the bar's only
+    /// failure signal), or the plain version. Only the pill is interactive — manual
+    /// checks live in Settings.
     /// </summary>
     private void UpdateVersionChipUI()
     {
@@ -2283,57 +2310,75 @@ public partial class MainWindow : Window
 
         if (update != null)
         {
-            var version = $"v{update.Version}";
+            var version = UpdateService.FormatVersion(update.Version);
             TxtUpdatePillLabel.Text = string.Format(_loc.HeaderUpdateAvailableFormat, version);
             BtnVersionChip.ToolTip = string.Format(_loc.HeaderVersionTooltipInstall, version);
+            AutomationProperties.SetName(BtnVersionChip, TxtUpdatePillLabel.Text);
             BtnVersionChip.Visibility = Visibility.Visible;
             ChipVersion.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (updateService.IsChecking)
+        {
+            // Passive progress hint; the pill (handled above) is never disturbed by a
+            // periodic re-check.
+            TxtVersionChip.Text = _loc.HeaderChecking;
+            TxtVersionChip.Foreground = TextSecondaryStatusBrush;
+            ChipVersion.ToolTip = _loc.HeaderVersionTooltipIdle;
+        }
+        else if (updateService.LastCheckFailed)
+        {
+            TxtVersionChip.Text = UpdateService.FormatVersion(updateService.CurrentVersion);
+            TxtVersionChip.Foreground = ErrorStatusBrush;
+            ChipVersion.ToolTip = _loc.HeaderVersionTooltipCheckFailed;
         }
         else
         {
-            TxtVersionChip.Text = $"v{updateService.CurrentVersion.ToString(3)}";
+            TxtVersionChip.Text = UpdateService.FormatVersion(updateService.CurrentVersion);
+            TxtVersionChip.Foreground = TextSecondaryStatusBrush;
             ChipVersion.ToolTip = _loc.HeaderVersionTooltipIdle;
-            ChipVersion.Visibility = Visibility.Visible;
-            BtnVersionChip.Visibility = Visibility.Collapsed;
         }
+        ChipVersion.Visibility = Visibility.Visible;
+        BtnVersionChip.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
-    /// Render the Settings overlay's Application Update section.
+    /// Render the Settings overlay's Application Update section. The install button
+    /// is driven solely by update availability, while the status text reports the
+    /// latest check outcome (via <see cref="UpdateService.GetStatusKind"/>) — so a
+    /// failed re-check stays visible without hiding a previously found update.
     /// </summary>
     private void UpdateSettingsUpdateSectionUI()
     {
         var updateService = UpdateService.Instance;
         TxtSettingsVersion.Text = string.Format(_loc.SettingsCurrentVersionFormat,
-            $"v{updateService.CurrentVersion.ToString(3)}");
+            UpdateService.FormatVersion(updateService.CurrentVersion));
 
         var update = updateService.AvailableUpdate;
         if (update != null)
         {
-            TxtSettingsUpdateStatus.Text = _loc.UpdateStatusAvailable;
-            TxtSettingsUpdateStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xA7, 0x26));
-            TxtSettingsUpdateToLabel.Text = string.Format(_loc.SettingsUpdateToFormat, $"v{update.Version}");
+            TxtSettingsUpdateToLabel.Text = string.Format(_loc.SettingsUpdateToFormat,
+                UpdateService.FormatVersion(update.Version));
+            AutomationProperties.SetName(BtnUpdateAvailableSettings, TxtSettingsUpdateToLabel.Text);
             BtnUpdateAvailableSettings.Visibility = Visibility.Visible;
         }
         else
         {
             BtnUpdateAvailableSettings.Visibility = Visibility.Collapsed;
-            if (_lastUpdateCheckFailed)
-            {
-                TxtSettingsUpdateStatus.Text = _loc.UpdateStatusFailed;
-                TxtSettingsUpdateStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50));
-            }
-            else if (updateService.LastCheckTime.HasValue)
-            {
-                TxtSettingsUpdateStatus.Text = _loc.UpdateStatusUpToDate;
-                TxtSettingsUpdateStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
-            }
-            else
-            {
-                // No check has completed yet
-                TxtSettingsUpdateStatus.Text = "";
-            }
         }
+
+        var kind = UpdateService.GetStatusKind(
+            updateService.IsChecking, updateService.LastCheckFailed,
+            update != null, updateService.LastCheckTime.HasValue);
+        (TxtSettingsUpdateStatus.Text, TxtSettingsUpdateStatus.Foreground) = kind switch
+        {
+            UpdateStatusKind.Checking => (_loc.HeaderChecking, TextSecondaryStatusBrush),
+            UpdateStatusKind.Failed => (_loc.UpdateStatusFailed, ErrorStatusBrush),
+            UpdateStatusKind.UpdateAvailable => (_loc.UpdateStatusAvailable, WarningStatusBrush),
+            UpdateStatusKind.UpToDate => (_loc.UpdateStatusUpToDate, SuccessStatusBrush),
+            _ => ("", TextSecondaryStatusBrush), // no check has completed yet
+        };
 
         UpdateLastCheckTimeDisplay();
     }
@@ -2359,7 +2404,11 @@ public partial class MainWindow : Window
             }
             else
             {
-                timeText = lastCheck.Value.ToString("HH:mm");
+                // Include the date once the check is more than a day old so "(21:14)"
+                // from yesterday can't read as twenty minutes ago today.
+                timeText = lastCheck.Value.Date == DateTime.Now.Date
+                    ? lastCheck.Value.ToString("HH:mm")
+                    : lastCheck.Value.ToString("MM-dd HH:mm");
             }
 
             TxtSettingsLastCheck.Text = $"({timeText})";
@@ -2371,10 +2420,11 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Update pill click: install the available update (the pill is only visible
-    /// when one exists).
+    /// Shared handler for both install buttons (title-bar pill and Settings section):
+    /// installs the available update. One handler, so the null-guard and logging
+    /// can't drift between the two entry points.
     /// </summary>
-    private void BtnVersionChip_Click(object sender, RoutedEventArgs e)
+    private void InstallUpdate_Click(object sender, RoutedEventArgs e)
     {
         var updateInfo = UpdateService.Instance.AvailableUpdate;
         if (updateInfo != null)
@@ -2391,19 +2441,6 @@ public partial class MainWindow : Window
     {
         _log.Debug("Manual update check triggered from Settings");
         await UpdateService.Instance.CheckForUpdateAsync();
-    }
-
-    /// <summary>
-    /// Settings "Update to vX.Y.Z" button click - starts the update
-    /// </summary>
-    private void BtnUpdateAvailableSettings_Click(object sender, RoutedEventArgs e)
-    {
-        var updateInfo = UpdateService.Instance.AvailableUpdate;
-        if (updateInfo != null)
-        {
-            _log.Info($"User initiated update to version {updateInfo.Version}");
-            UpdateService.Instance.StartUpdate();
-        }
     }
 
     #endregion
@@ -2444,6 +2481,15 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        // Detach the handlers this window added to app-lifetime singletons, so a
+        // background raise (log watcher, raid poller, the 3-minute update timer)
+        // during/after teardown can't dispatch UI work against a closed window.
+        _logSyncService.MonitoringStatusChanged -= OnLogMonitoringStatusChanged;
+        EftRaidEventService.Instance.MonitoringStateChanged -= OnRaidMonitoringStateChanged;
+        EftRaidEventService.Instance.RaidEvent -= OnRaidEvent;
+        UpdateService.Instance.UpdateCheckStarted -= OnUpdateCheckStarted;
+        UpdateService.Instance.UpdateCheckCompleted -= OnUpdateCheckCompleted;
+
         // WPF does not guarantee Unloaded at shutdown, so the map page's view
         // state (map/zoom/pan) gets its close-time save here as a backstop.
         TrySaveOnClose("map view state", () => _mapTrackerPage?.PersistViewState());
