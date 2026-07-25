@@ -84,6 +84,14 @@ public partial class LocalizationService
         _ => "Player profile — level, Scav Rep, DSP, edition, prestige"
     };
 
+    /// <summary>Concise UIA name for the profile chip (the tooltip is too verbose for a Name).</summary>
+    public string HeaderProfileName => CurrentLanguage switch
+    {
+        AppLanguage.KO => "플레이어 프로필",
+        AppLanguage.JA => "プレイヤープロフィール",
+        _ => "Player profile"
+    };
+
     /// <summary>Short level prefix shown on the profile chip, e.g. "Lv 15".</summary>
     public string HeaderLevelShort => CurrentLanguage switch
     {
@@ -118,6 +126,17 @@ public partial class LocalizationService
         AppLanguage.KO => "확인 중…",
         AppLanguage.JA => "確認中…",
         _ => "Checking…"
+    };
+
+    /// <summary>
+    /// Tooltip on the (red-tinted) idle version chip when the most recent update
+    /// check failed — the title bar's only failure signal.
+    /// </summary>
+    public string HeaderVersionTooltipCheckFailed => CurrentLanguage switch
+    {
+        AppLanguage.KO => "업데이트 확인 실패 — 자세한 내용은 설정에서 확인하세요",
+        AppLanguage.JA => "更新の確認に失敗しました — 詳細は設定を確認してください",
+        _ => "Update check failed — open Settings for details"
     };
 
     #endregion
@@ -194,6 +213,47 @@ public partial class LocalizationService
         AppLanguage.KO => "프레스티지",
         AppLanguage.JA => "プレステージ",
         _ => "Prestige"
+    };
+
+    #endregion
+
+    #region Settings — pre-existing rows (migrated from inline switches in MainWindow)
+
+    // The overlay title reuses the Core "Settings" property — same string, one source.
+
+    public string SettingsLogFolderLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "Tarkov 로그 폴더",
+        AppLanguage.JA => "Tarkovログフォルダ",
+        _ => "Tarkov Log Folder"
+    };
+
+    public string SettingsLogFolderDesc => CurrentLanguage switch
+    {
+        AppLanguage.KO => "자동 퀘스트 완료 추적을 위해 Tarkov의 Logs 폴더 경로를 설정하세요.",
+        AppLanguage.JA => "自動クエスト完了追跡のために、TarkovのLogsフォルダのパスを設定してください。",
+        _ => "Set the path to Tarkov's Logs folder for automatic quest completion tracking."
+    };
+
+    public string SettingsAutoDetectButton => CurrentLanguage switch
+    {
+        AppLanguage.KO => "자동 감지",
+        AppLanguage.JA => "自動検出",
+        _ => "Auto Detect"
+    };
+
+    public string SettingsBrowseButton => CurrentLanguage switch
+    {
+        AppLanguage.KO => "찾아보기...",
+        AppLanguage.JA => "参照...",
+        _ => "Browse..."
+    };
+
+    public string SettingsResetLogFolderButton => CurrentLanguage switch
+    {
+        AppLanguage.KO => "초기화",
+        AppLanguage.JA => "リセット",
+        _ => "Reset"
     };
 
     #endregion

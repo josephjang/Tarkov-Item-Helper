@@ -52,5 +52,29 @@ public sealed class HeaderE2ETests : E2ETestBase
 
         app.InvokeElement("BtnProfile");
         app.WaitForElementVisibility("TxtPlayerLevel", visible: false);
+
+        // Opening Settings force-closes an open drawer (it would otherwise keep
+        // floating beneath the overlay scrim with a stale up-chevron). The sync
+        // status chip is a real button whose invoke opens Settings.
+        app.InvokeElement("BtnProfile");
+        app.WaitForElementVisibility("TxtPlayerLevel", visible: true);
+        app.InvokeElement("ChipSyncStatus");
+        app.WaitForElementVisibility("BtnResetProgress", visible: true);
+        app.WaitForElementVisibility("TxtPlayerLevel", visible: false);
+    }
+
+    [E2EFact]
+    public void Switching_tabs_dismisses_the_profile_drawer()
+    {
+        using var app = AppDriver.Launch(NewConfigDir());
+
+        app.WaitForElement("BtnProfile");
+        app.InvokeElement("BtnProfile");
+        app.WaitForElementVisibility("TxtPlayerLevel", visible: true);
+
+        // Navigating to another tab must close the drawer — otherwise the centered
+        // popover keeps floating over the newly selected tab's content.
+        app.SelectTab("TabMap", "CmbMapSelect");
+        app.WaitForElementVisibility("TxtPlayerLevel", visible: false);
     }
 }

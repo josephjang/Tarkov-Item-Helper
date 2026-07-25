@@ -173,18 +173,23 @@ internal sealed class AppDriver : IDisposable
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
         var combo = WaitForElement(comboAutomationId, deadline);
 
-        while (DateTime.UtcNow < deadline)
+        string? name = null;
+        PollUntil(() =>
         {
             var selection = ((SelectionPattern)combo.GetCurrentPattern(SelectionPattern.Pattern))
                 .Current.GetSelection();
             if (selection.Length > 0)
             {
-                var name = selection[0].Current.Name;
-                if (!string.IsNullOrEmpty(name)) return name;
+                var candidate = selection[0].Current.Name;
+                if (!string.IsNullOrEmpty(candidate))
+                {
+                    name = candidate;
+                    return true;
+                }
             }
-            Thread.Sleep(250);
-        }
-        throw new TimeoutException($"combo '{comboAutomationId}' did not report a selection within 30s");
+            return false;
+        }, deadline, () => $"combo '{comboAutomationId}' did not report a selection within 30s");
+        return name!;
     }
 
     /// <summary>Waits until the element exists in the UIA tree and returns it.</summary>
@@ -204,16 +209,10 @@ internal sealed class AppDriver : IDisposable
 
     /// <summary>Polls until <see cref="IsElementVisible"/> reports the expected state.</summary>
     public void WaitForElementVisibility(string automationId, bool visible, int timeoutSeconds = 30)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (IsElementVisible(automationId) == visible) return;
-            Thread.Sleep(250);
-        }
-        throw new TimeoutException(
-            $"element '{automationId}' did not become {(visible ? "visible" : "hidden")} within {timeoutSeconds}s");
-    }
+        => PollUntil(
+            () => IsElementVisible(automationId) == visible,
+            DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"element '{automationId}' did not become {(visible ? "visible" : "hidden")} within {timeoutSeconds}s");
 
     /// <summary>Invokes a button-like element by AutomationId (InvokePattern).</summary>
     public void InvokeElement(string automationId)
@@ -227,13 +226,24 @@ internal sealed class AppDriver : IDisposable
 
     private AutomationElement WaitForElement(string automationId, DateTime deadline)
     {
+        AutomationElement? element = null;
+        PollUntil(() => (element = TryFindElement(automationId)) != null, deadline,
+            () => $"element '{automationId}' did not appear in the main window");
+        return element!;
+    }
+
+    /// <summary>
+    /// Shared poll loop (250ms cadence) behind every wait helper, so the retry/timeout
+    /// mechanics live in one place instead of drifting across near-identical copies.
+    /// </summary>
+    private static void PollUntil(Func<bool> condition, DateTime deadline, Func<string> timeoutMessage)
+    {
         while (DateTime.UtcNow < deadline)
         {
-            var element = TryFindElement(automationId);
-            if (element != null) return element;
+            if (condition()) return;
             Thread.Sleep(250);
         }
-        throw new TimeoutException($"element '{automationId}' did not appear in the main window");
+        throw new TimeoutException(timeoutMessage());
     }
 
     private AutomationElement? TryFindElement(string automationId)

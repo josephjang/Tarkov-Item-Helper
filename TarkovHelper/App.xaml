@@ -38,6 +38,9 @@
         <Color x:Key="AccentHover">#d4b85a</Color>
         <Color x:Key="SuccessColor">#4caf50</Color>
         <Color x:Key="WarningColor">#ff9800</Color>
+        <Color x:Key="ErrorColor">#ef5350</Color>
+        <!-- Dimmed "inactive" indicator (status dots when off), darker than TextSecondary -->
+        <Color x:Key="NeutralColor">#757575</Color>
         <Color x:Key="BackgroundHover">#4E4E52</Color>
         <Color x:Key="BackgroundPressed">#5E5E62</Color>
 
@@ -52,6 +55,8 @@
         <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}"/>
         <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
         <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+        <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}"/>
+        <SolidColorBrush x:Key="NeutralBrush" Color="{StaticResource NeutralColor}"/>
         <SolidColorBrush x:Key="BackgroundHoverBrush" Color="{StaticResource BackgroundHover}"/>
         <SolidColorBrush x:Key="BackgroundPressedBrush" Color="{StaticResource BackgroundPressed}"/>
 
