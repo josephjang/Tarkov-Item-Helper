@@ -99,7 +99,7 @@ upstream(Zeliper/Tarkov-Item-Helper)과 독립적으로 개발되어 왔다. 다
       Releases 섹션 추가; 낡은 참조 수정
   - 파일: `.claude/commands/release.md`, `CLAUDE.md`,
     `docs/DatabaseUpdateMechanism.md`,
-    `docs/PRDs/active/feature-hideout-localized-sort.md` + `.ko.md`
+    `docs/PRDs/feature-hideout-localized-sort.md` + `.ko.md`
 
 ### Phase 4: 가드 테스트
 
@@ -172,3 +172,9 @@ upstream(Zeliper/Tarkov-Item-Helper)과 독립적으로 개발되어 왔다. 다
 | 향후 upstream 머지가 Zeliper URL을 되살림 | 높음 — 포크 빌드가 자신을 upstream 앱으로 교체 | `Update_feed_constants_point_at_fork` + `Update_xml_urls_point_at_fork` 가드 테스트가 빌드를 실패시킴 |
 | 관리자 권한 앱 + AutoUpdater 인플레이스 교체 오동작 | 중간 | upstream과 동일 동작; 선택 리허설로 end-to-end 확인 |
 | 릴리즈 워크플로 중간 실패 | 낮음 | 2단계 플로우로 클라이언트는 아무것도 못 봄; 문서화된 복구 절차로 같은 버전 재태깅 |
+
+---
+
+**참고 (2026-07-30)** — 릴리스된 `TarkovHelper.zip`의 수동 스모크 체크(패키징된
+빌드 설치·실행)는 기록된 결과가 없습니다. 통과했다고 가정하는 대신 미검증으로
+남깁니다.

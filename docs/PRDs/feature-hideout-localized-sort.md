@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: In Progress (code + tests + PRD in PR against upstream)
+- **Status**: Shipped — PR #4 merged 2026-06-19
 - **Created**: 2026-06-20
 - **Updated**: 2026-06-20
 - **Owner**: josephjang
@@ -119,3 +119,10 @@ The in-game order is alphabetical by the **localized** name (English alphabetica
 - **Actual vs Planned**:
 - **Lessons Learned**:
 - **Follow-up Items**:
+
+---
+
+**Note (2026-07-30)** — Shipped limitation: the in-game Hideout tab groups modules
+by build state (buildable / upgradable / locked) before sorting; this feature
+ships locale-aware alphabetical ordering only, so the app's order can differ from
+the in-game list.
