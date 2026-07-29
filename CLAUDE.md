@@ -33,15 +33,29 @@ dotnet run --project TarkovHelper/TarkovHelper.csproj -- --fetch
 | **TarkovDBEditor** | Database editor tool for managing tarkov_data.db (see `TarkovDBEditor/CLAUDE.md` for details) |
 | **CheckDb** | Utility project (.NET 10) |
 
-## Documentation & PRDs
+## Documentation & Decision Docs
 
-Design/planning docs are written as PRDs under `docs/PRDs/` at the repo root — this is
-the canonical PRD location for the whole solution (TarkovHelper, TarkovDBEditor, and
-cross-cutting work). It lives at root, a sibling of `TarkovHelper/`, `TarkovDBEditor/`,
-and `TarkovHelper.sln`, rather than nested inside any one project, since PRDs here
-routinely span more than one project. See that folder's `README.md` for the
-active/archive/templates workflow, the EN/KO bilingual PRD convention, and the
-staleness policy for `active/`.
+Decisions are documented in `docs/PRDs/` at the repo root — the single location for
+the whole solution (TarkovHelper, TarkovDBEditor, and cross-cutting work), kept at
+root since documents routinely span projects. Two document types pair by filename:
+`name.md` is a PRD (product decisions), `name.spec.md` is a spec (technical design).
+The folder's name predates the split; see its `README.md` for the format.
+
+**When a change needs a document** (write it on the work's branch — it merges in the
+same PR as the work):
+
+- A hard-to-reverse **product decision** → PRD (`name.md`)
+- A non-obvious **technical decision** → spec (`name.spec.md`)
+- Both → both files, sharing one name
+- Neither (obvious bug fix, mechanical refactor) → no document; the PR body is enough
+- Adding the sibling file mid-flight is expected — just add it.
+
+Documents live flat in `docs/PRDs/`, are never moved, and are append-only: a
+document on `main` is a finished decision record, and state (in flight / done /
+dropped) belongs to GitHub PRs. Name the documents a PR implements in the PR body.
+The only post-merge write: a change that reverses a recorded decision appends
+`Superseded by <doc>` to the old document in that same PR. `archive/` holds frozen
+legacy documents in their original format.
 
 Pure reference/analysis docs (DB schemas, system analyses, log-format notes — anything
 describing how the system currently works rather than planned work) live directly under
