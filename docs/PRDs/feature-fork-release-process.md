@@ -100,7 +100,7 @@ release at all:
       Releases section to the root guide; fix stale references
   - Files: `.claude/commands/release.md`, `CLAUDE.md`,
     `docs/DatabaseUpdateMechanism.md`,
-    `docs/PRDs/active/feature-hideout-localized-sort.md` + `.ko.md`
+    `docs/PRDs/feature-hideout-localized-sort.md` + `.ko.md`
 
 ### Phase 4: Guard tests
 
@@ -174,3 +174,9 @@ the release and tag, fix on main, re-tag the **same** version.
 | A future upstream merge reintroduces Zeliper URLs | High — fork builds would replace themselves with the upstream app | `Update_feed_constants_point_at_fork` + `Update_xml_urls_point_at_fork` guard tests fail the build |
 | Elevated app + AutoUpdater in-place replacement misbehaves | Medium | Unchanged from upstream behavior; optional rehearsal verifies end-to-end |
 | Release workflow fails mid-flight | Low | Two-step flow means clients saw nothing; documented recovery re-tags the same version |
+
+---
+
+**Note (2026-07-30)** — The manual smoke-check of the released `TarkovHelper.zip`
+(installing and launching the packaged build) has no recorded result; it is logged
+here as unverified rather than assumed to have passed.

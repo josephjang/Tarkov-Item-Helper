@@ -2,7 +2,7 @@
 
 ## 개요 (Overview)
 
-- **Status**: In Progress (코드 + 테스트 + PRD를 upstream PR에 포함)
+- **Status**: Shipped — PR #4 (2026-06-19 머지)
 - **Created**: 2026-06-20
 - **Updated**: 2026-06-20
 - **Owner**: josephjang
@@ -119,3 +119,9 @@
 - **Actual vs Planned**:
 - **Lessons Learned**:
 - **Follow-up Items**:
+
+---
+
+**참고 (2026-07-30)** — 배포된 기능의 한계: 인게임 Hideout 탭은 정렬 전에 모듈을
+건설 상태(건설 가능 / 업그레이드 가능 / 잠김)별로 그룹화하지만, 이 기능은 로케일
+기반 알파벳 정렬만 제공하므로 앱의 순서가 인게임 목록과 다를 수 있습니다.

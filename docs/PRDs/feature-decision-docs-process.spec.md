@@ -325,8 +325,9 @@ git grep -n "docs/PRDs/active/" -- . ":!docs/PRDs/feature-decision-docs-process.
 #    paths in its own path-reference table and in this very command)
 
 # 5. Every docs/PRDs path written in a tracked file resolves
-git grep -h -o -E "docs/PRDs/[A-Za-z0-9_/.-]+\.md" -- . | Sort-Object -Unique | Where-Object { -not (Test-Path $_) }
-#    expected: no output
+git grep -h -o -E "docs/PRDs/[A-Za-z0-9_/.-]+\.md" -- . ":!docs/PRDs/feature-decision-docs-process.spec.md" | Sort-Object -Unique | Where-Object { -not (Test-Path $_) }
+#    expected: no output (this spec is excluded for the same reason as check 4 —
+#    it records the removed paths and the deleted template by design)
 
 # 6. The moves registered as renames, not delete+add — run after committing
 git show --stat -M HEAD

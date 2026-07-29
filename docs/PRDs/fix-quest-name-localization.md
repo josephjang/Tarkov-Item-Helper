@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: In Progress (code/tests/PRD in PR; DB shipped on a separate branch)
+- **Status**: Shipped — PR #2, #3 merged 2026-06-13
 - **Created**: 2026-06-13
 - **Updated**: 2026-06-13
 - **Owner**: josephjang

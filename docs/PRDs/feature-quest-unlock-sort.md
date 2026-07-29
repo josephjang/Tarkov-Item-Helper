@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: Review (code + tests + app-verified; PR pending)
+- **Status**: Shipped — PR #5 merged 2026-07-01
 - **Created**: 2026-07-02
 - **Updated**: 2026-07-02
 - **Owner**: josephjang
@@ -123,3 +123,9 @@ is **sparse/unreliable** (most tasks carry no stored level), so ordering must no
 - **Actual vs Planned**:
 - **Lessons Learned**:
 - **Follow-up Items**:
+
+---
+
+**Note (2026-07-30)** — Shipped limitation: the in-game quest tab lists quests in
+reverse unlock order, which is per-profile state the app cannot read; the shipped
+sort deliberately uses a static forward progression order instead.

@@ -8,6 +8,13 @@
 - **Owner**: josephjang
 - **Origin**: PR #1 `gemini-code-assist` Critical 리뷰 (`UserDataDbService.cs:1057`)
 
+> **참고 (2026-07-30)**: 이 문서는 완료된 조사 기록이며, 수정 구현은 의도적으로
+> 유예되었습니다. 코드로 확인한 현재 상태: 동기 접근자의 lazy re-init
+> (`InitializeAsync().GetAwaiter().GetResult()`)이 `UserDataDbService.cs:1057,
+> 1076, 1102, 1223, 1243`에 그대로 있고, `Program.Main`은 eager init 없이
+> `new App()`에 도달합니다. 구현이 진행되면 그 PR이 이 노트 아래에 기록을
+> 덧붙입니다.
+
 ## Problem Statement
 
 `UserDataDbService`의 동기 접근자(`GetSetting`, `SetSetting`, `GetProfileSetting`,

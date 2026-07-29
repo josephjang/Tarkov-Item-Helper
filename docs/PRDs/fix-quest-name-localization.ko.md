@@ -5,7 +5,7 @@
 
 ## Overview
 
-- **Status**: In Progress (코드/테스트/PRD는 PR; DB는 별도 브랜치로 분리)
+- **Status**: Shipped — PR #2, #3 (2026-06-13 머지)
 - **Created**: 2026-06-13
 - **Updated**: 2026-06-13
 - **Owner**: josephjang

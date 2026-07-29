@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: Review (구현 + 검증 완료; josephjang/Tarkov-Item-Helper에 PR #8 오픈)
+- **Status**: Shipped — PR #8, #9 (2026-07-24 머지)
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-24
 - **Owner**: josephjang

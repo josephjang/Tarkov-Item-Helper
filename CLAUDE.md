@@ -165,7 +165,7 @@ month, no fix/feature semantics), starting at v2026.7.0.
 - Run `/release <version>` — it bumps the csproj, pushes the tag (never `git push
   --tags`), waits for `.github/workflows/release.yml` to build/test/package/publish
   `TarkovHelper.zip`, then bumps `update.xml` **last** so clients never see a 404 URL.
-- Design rationale: `docs/PRDs/active/feature-fork-release-process.md`
+- Design rationale: `docs/PRDs/feature-fork-release-process.md`
 
 ## Framework & Dependencies
 

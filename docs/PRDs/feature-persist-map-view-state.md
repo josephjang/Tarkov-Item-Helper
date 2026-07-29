@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: Review (implemented + verified; PR #8 open on josephjang/Tarkov-Item-Helper)
+- **Status**: Shipped — PR #8, #9 merged 2026-07-24
 - **Created**: 2026-07-23
 - **Updated**: 2026-07-24
 - **Owner**: josephjang

@@ -2,7 +2,7 @@
 
 ## 개요 (Overview)
 
-- **Status**: Review (코드 + 테스트 + 앱 검증 완료; PR 대기)
+- **Status**: Shipped — PR #5 (2026-07-01 머지)
 - **Created**: 2026-07-02
 - **Updated**: 2026-07-02
 - **Owner**: josephjang
@@ -118,3 +118,9 @@
 - **Actual vs Planned**:
 - **Lessons Learned**:
 - **Follow-up Items**:
+
+---
+
+**참고 (2026-07-30)** — 배포된 기능의 한계: 인게임 퀘스트 탭은 역-언락 순서로
+표시되지만 이는 프로필별 상태라 앱이 읽을 수 없습니다. 배포된 정렬은 의도적으로
+정적 정방향 진행 순서를 사용합니다.
