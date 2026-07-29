@@ -1,21 +1,42 @@
-# PRDs (Product Requirements Documents)
+# PRDs (결정 문서)
 
-이 폴더는 저장소 전체(TarkovHelper + TarkovDBEditor + 프로젝트 간 교차 작업)의 기능 개발
-계획을 관리하는 단일 위치입니다. `TarkovHelper`만을 위한 폴더가 아니라서 저장소 루트의
-`docs/`(TarkovHelper.sln, TarkovHelper/, TarkovDBEditor/와 형제 위치)에 있습니다 — 예를 들어
-`fix-quest-name-localization.md`는 TarkovDBEditor의 데이터 파이프라인과 TarkovHelper의
-WPF 앱을 모두 다룹니다.
+이 폴더는 저장소 전체(TarkovHelper + TarkovDBEditor + 프로젝트 간 교차 작업)의
+**결정 문서(decision docs)** 를 두는 단일 위치입니다. 결정 문서는 두 종류이고,
+파일명으로 짝을 이룹니다:
 
-## PRD vs 참고 문서
+- **PRD** (`name.md`) — 제품 결정: 사용자에게 무엇이 왜 바뀌어야 하는가
+- **Spec** (`name.spec.md`) — 기술 설계: 어떤 서비스/파일/데이터 흐름이 어떻게 바뀌는가
 
-- **PRD** (`docs/PRDs/`): 계획된 작업 — Goals, Implementation Plan, Completion Criteria가
-  있는 문서. "앞으로 무엇을 할 것인가"를 기술합니다.
-- **참고/분석 문서** (`docs/` 바로 아래, 또는 `TarkovDBEditor/docs/`): DB 스키마, 시스템
-  분석, 로그 포맷 노트처럼 "현재 시스템이 어떻게 동작하는가"를 기술하는 문서. 완료 기준이나
-  진행 상태를 추적하지 않습니다.
+변경에 따라 하나만 쓰거나, 둘 다 쓰거나, 아예 안 쓸 수 있습니다. 폴더 이름 `PRDs`는
+이 구분이 생기기 전의 이름이라 두 종류 중 하나만 가리키지만 그대로 둡니다 — 이름을
+바꿔서 얻는 것에 비해 참조 churn이 크기 때문입니다
+(`feature-decision-docs-process.spec.md`의 Technical Decisions 참고).
 
-새 문서를 어디에 둘지 애매하면: Goals/Completion Criteria로 자연스럽게 쓸 수 있으면 PRD,
-아니면 참고 문서입니다.
+## 핵심 원칙
+
+1. **문서는 작업과 같은 PR로 머지됩니다 (born final).** `main`에 있는 문서는 곧
+   유효한 결정 기록입니다. 진행 중 = 열린 PR, 완료 = 머지된 PR, 중단 = 머지 없이
+   닫힌 PR — 상태는 전부 GitHub이 소유하고, 문서에는 상태 필드가 없습니다.
+2. **문서는 append-only입니다.** 모든 필드는 값을 아는 시점에 한 번만 씁니다. 구현
+   중 발견한 결정은 덧붙이고(append), 이미 쓴 내용은 고치지 않습니다. 머지 후에
+   문서를 다시 여는 유일한 경우: 나중 변경이 기록된 결정을 뒤집을 때, 그 변경의
+   PR이 옛 문서 상단에 `Superseded by <doc>` 한 줄을 덧붙입니다.
+3. **PR 본문이 구현하는 문서를 파일명으로 언급합니다.** 문서 쪽에는 PR 링크가
+   없습니다 — PR 번호는 문서를 다 쓴 뒤에야 생기기 때문입니다. 문서→PR 방향은
+   `gh pr list --search "<문서명>"` 또는 `git log --follow`로 유도합니다.
+
+왜 이런 형태인가: 이전 형식은 작업 중 최신으로 유지해야 하는 필드(`Status`,
+`Updated`, `Progress Log`, 진행 체크박스)를 요구했는데, 2026-07 시점에 `active/`의
+문서 6개 중 5개가 이미 배포된 작업을 "In Progress"로 표시한 채 방치돼 있었습니다.
+유지 의무가 있는 필드는 반드시 썩습니다 — 그래서 새 형식에는 그런 필드가 하나도
+없습니다. (이유 없는 규칙은 되돌려지기 마련이라 이유를 여기 남깁니다. 전체 근거는
+`feature-decision-docs-process.md` 참고.)
+
+## 결정 문서 vs 참고 문서
+
+- **결정 문서** (`docs/PRDs/`): 할 작업(또는 한 작업)에 대한 결정을 기록 — PRD/spec
+- **참고 문서** (`docs/` 바로 아래, 또는 `TarkovDBEditor/docs/`): DB 스키마, 시스템
+  분석, 로그 포맷 노트처럼 "현재 시스템이 어떻게 동작하는가"를 기술
 
 ## Folder Structure
 
@@ -23,91 +44,43 @@ WPF 앱을 모두 다룹니다.
 docs/
 ├── PRDs/
 │   ├── README.md              # 이 파일
-│   ├── active/                # 진행 중인 PRD
-│   ├── archive/                # 완료(또는 폐기)된 PRD (월별 정리, YYYY-MM/)
-│   └── templates/             # PRD 템플릿
-└── (그 외 모든 파일)            # 참고/분석 문서 (예: DatabaseSchema.md, Map_System_Analysis.md)
+│   ├── *.md, *.spec.md        # 결정 문서 (평면 구조, 이동 없음)
+│   ├── templates/             # prd-template.md, spec-template.md
+│   └── archive/               # 동결된 레거시 문서 (YYYY-MM/, 형식·위치 불변)
+└── (그 외 모든 파일)            # 참고 문서 (예: DatabaseSchema.md)
 ```
 
-## Workflow
+문서는 평면으로 놓이고 이동하지 않습니다 — **파일명이 영구 주소**입니다. `archive/`는
+이전 프로세스가 남긴 역사이며, 새 문서는 들어가지 않습니다.
 
-### 1. 새 기능 계획
-1. `templates/feature-template.md`를 복사하여 `active/` 폴더에 생성
-2. 파일명: `feature-[기능명].md` (예: `feature-map-v2.md`)
-3. PRD 내용 작성
+## 새 문서 작성
 
-> 확장자는 일반 `.md`를 사용합니다 (2026-07-24에 전체 `.prd` → `.md` 일괄 전환).
-> 에디터와 GitHub이 Markdown으로 인식하게 하기 위함이며, PRD 여부는 확장자가 아니라
-> 위치(`docs/PRDs/`)와 파일명 접두사(`feature-*`/`fix-*`)로 구분합니다.
+어떤 변경에 문서가 필요한가 (root `CLAUDE.md`에도 같은 규칙이 있습니다):
 
-### 2. 작업 진행
-1. Status를 "In Progress"로 변경
-2. 각 Task 완료 시 체크박스 체크
-3. Progress Log에 진행 상황 기록
-4. 관련 에이전트의 Learning Log 업데이트 요청
+- 되돌리기 어려운 **제품 결정** → PRD (`name.md`)
+- 자명하지 않은 **기술 결정** → spec (`name.spec.md`)
+- 둘 다 → 같은 이름의 두 파일
+- 둘 다 아님 (자명한 버그 수정, 기계적 리팩터링) → 문서 없음, PR 본문으로 충분
+- 구현 중에 sibling 파일을 추가하는 것은 실패가 아니라 정상입니다 — 기술 결정은
+  조사 후에야 보이는 경우가 많습니다. 그냥 추가하세요.
 
-### 3. 완료 및 아카이빙
-1. 모든 Task 완료 확인
-2. Status를 "Completed"로 변경
-3. Archive Info 섹션 작성
-4. `archive/YYYY-MM/` 폴더로 이동
+작성 절차: `templates/`의 해당 템플릿을 복사해 `feature-<이름>.md`(또는
+`fix-<이름>.md`, `<이름>.spec.md`)로 만들고, 작업 브랜치에서 작성해 같은 PR로
+머지합니다. 이후 이 문서에 필요한 일은 없습니다.
 
-### 4. 정체(Stale) PRD 처리
+## 표기 관례
 
-`active/`에 있는 PRD가 **~30일 이상** 업데이트되지 않았다면, 다음에 이 폴더를 건드리는
-사람이 방치하지 말고 처리합니다:
-- 실제로 진행 중이면 Progress Log를 갱신하고 계속 진행
-- 아니면 완료 여부와 관계없이 **정직하게** Archive Info를 채우고 archive로 이동
-  (예: "Superseded — 2025-12 이후 활동 없음, 다른 작업으로 우선순위 이동")
-
-`active/`는 실제로 살아있는 작업만 남아있어야 합니다. (2026-07 정리 당시 3개의 PRD가
-6개월 이상 방치되어 있었던 것이 이 규칙이 생긴 이유입니다.)
-
-## 이중 언어(EN/KO) PRD
-
-사용자 대상 동작을 다루는 PRD는 영문 원본(`name.md`) + 한글 번역본(`name.ko.md`)을
-1:1로 유지할 수 있습니다 (예: `feature-hideout-localized-sort.*`,
-`feature-quest-unlock-sort.*`, `fix-quest-name-localization.*`). 두 문서 내용이 충돌하면
-**영문 원본이 기준**입니다. 코드 식별자(`AppLanguage.KO`, `NameKO` 등)는 번역하지 않고
-그대로 둡니다.
-
-## PRD Status
-
-| Status | Description |
-|--------|-------------|
-| Planning | 계획 수립 중 |
-| In Progress | 개발 진행 중 |
-| Review | 검토/테스트 중 |
-| Completed | 완료 |
-| Archived | 아카이브됨 |
-
-## Agent Integration
-
-PRD는 다음 에이전트들과 연동됩니다:
-
-| Agent | Role |
-|-------|------|
-| `prd-manager` | PRD 생성/관리/아카이빙 |
-| `map-feature-specialist` | Map 기능 작업 |
-| `db-schema-analyzer` | DB 스키마 작업 |
-| `wpf-xaml-specialist` | UI/XAML 작업 |
-| `service-architect` | 서비스 설계 작업 |
-
-## Commands
-
-```powershell
-# 활성 PRD 목록 확인 (저장소 루트에서 실행)
-ls docs/PRDs/active/
-
-# PRD 아카이빙 (2026년 7월)
-New-Item -ItemType Directory -Force docs/PRDs/archive/2026-07/
-git mv docs/PRDs/active/feature-xxx.md docs/PRDs/archive/2026-07/
-```
+- **문서는 파일명으로 참조합니다** (`feature-x.md`). 폴더 경로는 쓰지 않습니다.
+- **코드 인용은 심볼 기준** (`UserDataDbService.InitializeAsync`), 줄 번호는
+  참고용입니다.
+- **새 문서는 영어로만** 씁니다. 기존 `.ko.md` 쌍둥이는 원본과 1:1로 유지하고, 내용
+  충돌 시 영어 원본이 기준입니다. 코드 식별자(`AppLanguage.KO`, `NameKO`)는
+  번역하지 않습니다.
+- **레거시 문서는 원래 형식을 유지합니다.** 새 형식에는 종결 섹션이 없습니다 —
+  레거시 문서의 `Archive Info`(또는 `Outcome`)가 과거에 그 역할을 하던 흔적입니다.
 
 ## Best Practices
 
-1. **작은 단위**: 각 PRD는 1-2주 내 완료 가능한 크기로
-2. **명확한 기준**: 완료 기준을 구체적으로 명시
-3. **진행 기록**: Progress Log를 꾸준히 업데이트
-4. **에이전트 학습**: 작업 결과를 에이전트 파일에 기록
-5. **정기 정리**: 완료된 PRD는 월별로 아카이빙, 정체된 PRD는 위 "정체 PRD 처리" 규칙을 따름
+1. **작은 단위**: 각 문서는 1-2주 내 완료 가능한 크기로
+2. **명확한 기준**: `Requirements / Acceptance Criteria`를 사용자가 관찰 가능한
+   수준으로 구체적으로
