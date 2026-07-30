@@ -34,7 +34,8 @@ Measured against the repository before this change, the old process failed in tw
 ways.
 
 **Documents lied.** Five of the six documents in `active/` described work that had
-already shipped, yet still read `Planning`, `In Progress`, or `Review`:
+already shipped; four of them still read `In Progress` or `Review`, and the fifth
+said `Completed` but sat in `active/` with its Archive Info never written:
 
 | Document | Says | Actually |
 |---|---|---|
@@ -80,9 +81,9 @@ the size of the top-bar redesign cannot ship undocumented by accident.
 
 ## Non-Goals
 
-- **Automated validation** — no frontmatter, guard tests, docs CI step, or `/prd`
-  command this round. The Risks section names exactly what a guard would still
-  catch.
+- **Automated validation beyond the four-invariant guard** — no frontmatter, docs
+  CI step, or `/prd` command this round. (The first draft declined the guard test
+  too; the deep review of this PR reversed that deliberately — see Risks.)
 - **Reorganizing the legacy archive.** `archive/YYYY-MM/` documents keep their
   format and their location.
 - **Unifying the four bilingual conventions** that coexist in `.ko.md` files.
@@ -179,7 +180,9 @@ deliberately deferred — a legitimate document with no implementation behind it
 which "born final" would otherwise misread as shipped. It gets a one-line note
 stating exactly that, true at the time of writing; if implementation lands later,
 that PR appends its link. A formal marker analogous to `Superseded by` was
-considered and deferred until a second such case confirms the pattern.
+considered and deferred until a second such case confirms the pattern. The spec
+template's header blockquote now cues this note explicitly, so the next such case
+is not produced blind while the formal marker waits.
 
 **`Owner` and `Related Agents` are dropped for their own reasons, not for upkeep.**
 This repository has a single maintainer, `Owner` accumulated eight different
@@ -193,8 +196,8 @@ the drift without rewriting the past. Two rules survive for the existing twins: 
 English original wins any conflict, and code identifiers (`AppLanguage.KO`,
 `NameKO`) are never translated.
 
-**Legacy folders are frozen; everything in `active/` flattens.** The 35 documents in
-`archive/YYYY-MM/` stay exactly where they are — their paths can never change
+**Legacy folders are frozen; everything in `active/` flattens.** The 34 documents
+(35 files) in `archive/YYYY-MM/` stay exactly where they are — their paths can never change
 again, which is all that matters. Everything in `active/` moves up to `docs/PRDs/`
 once, and `active/` disappears. Sorting the flattened documents by finished-ness
 into `archive/` first was considered and rejected: it would re-encode in folders
@@ -211,11 +214,13 @@ format from memory. Mitigation: the README records *why* each field was removed,
 with the five-of-six evidence — a rule without its reason gets undone; a rule with
 its reason gets argued with first.
 
-**Drift returns and nothing catches it.** This is the real cost of declining
-automated validation, and it is accepted knowingly. A guard test in
-`TarkovHelper.Tests` — following the `UpdateXmlTests.cs` precedent, which already
-asserts on a non-code repository file — could still mechanically check four
-invariants offline:
+**Drift returns and nothing catches it.** This was the cost of declining automated
+validation in the first draft, accepted knowingly. The deep review of this PR
+judged that cost understated — every surviving obligation was discipline-guarded
+while these checks are mechanical — and reversed the decision:
+`TarkovHelper.Tests/PrdDocsTests.cs`, following the `UpdateXmlTests.cs` precedent
+(which already asserts on a non-code repository file), now checks four invariants
+offline:
 
 1. no new-format document contains `**Status**`, `**Updated**`, `**Owner**`,
    `**Related Agents**`, `## Progress Log`, or an unticked task checkbox
@@ -225,8 +230,9 @@ invariants offline:
 4. every `docs/PRDs/…` path written in a tracked file resolves.
 
 (The earlier fifth check — no document in `active/` with a merged PR — needed the
-network; born-final removes the condition it existed to catch.) Declining the guard
-is a decision with a named cost, recorded so it can be reversed deliberately.
+network; born-final removes the condition it existed to catch.) What no guard
+catches — a forgotten `Superseded by` append, the quality of a document's content —
+remains discipline, accepted with the act-coupling rationale above.
 
 **A document on `main` can outrun a multi-PR change.** Between PR 1 and PR 2 the
 document reads as complete while work remains. Accepted: the remaining work is an
