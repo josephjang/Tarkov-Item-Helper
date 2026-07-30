@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Status**: Planning
+- **Status**: 조사 완료 — 수정 구현은 의도적으로 유예 (아래 2026-07-30 노트 참조)
 - **Created**: 2026-06-01
 - **Updated**: 2026-06-01
 - **Owner**: josephjang

@@ -53,6 +53,8 @@ same PR as the work):
 Documents live flat in `docs/PRDs/`, are never moved, and are append-only: a
 document on `main` is a finished decision record, and state (in flight / done /
 dropped) belongs to GitHub PRs. Name the documents a PR implements in the PR body.
+New documents are written in English only; existing `.ko.md` twins stay paired 1:1
+with their originals, and the English original wins any conflict.
 The only post-merge write: a change that reverses a recorded decision appends
 `Superseded by <doc>` to the old document in that same PR. `archive/` holds frozen
 legacy documents in their original format.
