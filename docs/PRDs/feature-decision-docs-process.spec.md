@@ -8,17 +8,20 @@
 
 ## Summary
 
-Four groups of changes, no application code: two new templates replace the old one
-(no kept-current field, no terminal section); `docs/PRDs/README.md` is rewritten to
-match;
+Four groups of changes plus two review-added guards, no application code: two new
+templates replace the old one (no kept-current field, no terminal section);
+`docs/PRDs/README.md` is rewritten to match;
 the trigger rules go into root `CLAUDE.md`; and a one-time flattening — everything
 in `active/` moves up to `docs/PRDs/`, false `Status` lines are corrected, and the
-legacy `archive/` tree is frozen in place.
+legacy `archive/` tree is frozen in place. The deep review of this PR added
+`TarkovHelper.Tests/PrdDocsTests.cs` (the four format invariants, checked offline)
+and `.github/PULL_REQUEST_TEMPLATE.md` (a checkbox linking to the trigger rules).
 
 ## Current Behavior
 
 `docs/PRDs/` holds one template, one README, six live documents (eleven files
-including Korean twins), and 35 archived documents.
+including Korean twins), and 34 archived documents (35 files — one has a Korean
+twin).
 
 - `templates/feature-template.md` has six sections a diligent author must revisit
   mid-flight: `Overview` (`Status`, `Updated`), `Implementation Plan`
@@ -38,8 +41,8 @@ including Korean twins), and 35 archived documents.
 
 ### 1. Templates: two new, one deleted
 
-The blocks below are the templates **as reviewed in PR #13**; once they land, the
-authoritative copies are the files under `docs/PRDs/templates/`. Two conventions
+The blocks below are the templates **as reviewed in this pair's own PR**; once
+they land, the authoritative copies are the files under `docs/PRDs/templates/`. Two conventions
 apply to both:
 
 - **Reference other documents by filename, never by folder path**
@@ -90,8 +93,9 @@ recording. Where a rejected alternative had real merit, give it its own paragrap
 Append decisions discovered during implementation as they happen.
 
 ## Risks
-User-facing risk, and what makes it acceptable. If the shipped result has known
-limitations, record them here before the final PR merges.
+User-facing risk, and what makes it acceptable. If the shipped result has a
+user-facing limitation, record it here before the final PR merges (technical
+limitations belong in the sibling spec's Risks & Migration).
 ```
 
 **New — `docs/PRDs/templates/spec-template.md`**
@@ -106,6 +110,8 @@ limitations, record them here before the final PR merges.
 > and merge it in the same PR as the work. Nothing is kept current: fields are
 > written once, discoveries are appended. A later change that reverses a decision
 > here appends `Superseded by <doc>` below this line, in the PR that reverses it.
+> If this spec records a decision whose implementation is deliberately deferred,
+> say so explicitly — a merged spec is otherwise read as shipped.
 
 ## Summary
 The design in a few sentences: what changes, and the one or two ideas it rests on.
@@ -144,8 +150,9 @@ Commands to run, including any manual check, and the observable result that prov
 it works.
 
 ## Risks & Migration
-Data migration, ordering, compatibility, rollback. Known limitations of the shipped
-result go here before the final PR merges.
+Data migration, ordering, compatibility, rollback. Technical limitations of the
+shipped result go here before the final PR merges (user-facing limitations belong
+in the sibling PRD's Risks).
 ```
 
 **Deleted — `docs/PRDs/templates/feature-template.md`**, fully replaced by the two
@@ -204,11 +211,12 @@ session; putting the four-line rule there is what makes R5 achievable.
 
 ### 4. One-time flattening
 
-Thirteen files move up one level from `active/` to `docs/PRDs/`, and `active/` is
-removed: the five shipped document sets with their Korean twins (ten files),
-`fix-userdata-init-deadlock.md`, and this change's own two documents. Because
-nothing moves again afterwards, this is the last path change these files can ever
-have.
+Thirteen files end up flat in `docs/PRDs/`, and `active/` is removed: eleven
+pre-existing files move up one level as git renames (the five shipped document
+sets with their Korean twins, plus `fix-userdata-init-deadlock.md`), and this
+change's own two documents are born at the flat location — against `main` they
+are additions, not moves. Because nothing moves again afterwards, this is the
+last path change these files can ever have.
 
 **Corrections made while flattening**, in both the English original and its Korean
 twin:
@@ -229,21 +237,34 @@ twin:
    code, not commit messages — lazy re-init via
    `InitializeAsync().GetAwaiter().GetResult()` is still at five sites
    (`UserDataDbService.cs:1057, 1076, 1102, 1223, 1243`), and `Program.Main`
-   reaches `new App()` with no eager initialization.
+   reaches `new App()` with no eager initialization. Its stale `Status: Planning`
+   line is corrected to say the same (investigation complete, fix deferred) — the
+   deep review caught the header contradicting the note it sits above.
 
 **Path references updated for the last time:**
 
 | Location | Points at | Update to |
 |---|---|---|
-| `CLAUDE.md:154` | `docs/PRDs/active/feature-fork-release-process.md` | `docs/PRDs/feature-fork-release-process.md` |
+| `CLAUDE.md` `## Releases` (line 154 pre-change) | `docs/PRDs/active/feature-fork-release-process.md` | `docs/PRDs/feature-fork-release-process.md` |
 | `.claude/commands/release.md:8` | same | same new path |
 | `feature-fork-release-process.md:103` | `docs/PRDs/active/feature-hideout-localized-sort.md` | `docs/PRDs/feature-hideout-localized-sort.md` |
 | `feature-fork-release-process.ko.md:102` | same | same new path |
 
-Fifteen source and test comments mention documents **by name only** (e.g.
-`QuestUnlockOrderTests.cs:8`, `WindowBoundsPersistence.cs:8`); they carry no path,
-do not break, and are the working precedent for the reference-by-filename
-convention above.
+Ten source and test comments mention documents **by name only** (e.g.
+`QuestUnlockOrderTests.cs:8`, `WindowBoundsPersistence.cs:8`), and five more
+reference a PRD generically without naming a file; none carries a path, none
+breaks, and the ten name-bearing ones are the working precedent for the
+reference-by-filename convention above.
+
+### 5. Review-added guards
+
+Two files added during the deep review of this PR (decisions recorded under
+Technical Decisions):
+
+- `TarkovHelper.Tests/PrdDocsTests.cs` — one `[Fact]` per format invariant from
+  the PRD's Risks, on the `UpdateXmlTests.cs` repo-root-walk harness.
+- `.github/PULL_REQUEST_TEMPLATE.md` — a decision-docs checkbox linking to the
+  trigger rules in root `CLAUDE.md`.
 
 ## Technical Decisions
 
@@ -254,7 +275,7 @@ docs* — the folder now names only one of the two types it holds — and still 
 the churn is unchanged, and the README's umbrella definition, not the folder name,
 carries the terminology.
 
-**The legacy `archive/` tree is frozen in place.** Moving its 35 documents out — or
+**The legacy `archive/` tree is frozen in place.** Moving its 34 documents out — or
 sorting the five newly finished documents in — was rejected: filing documents by
 finished-ness re-encodes in folders the state distinction this design removes, and
 frozen paths are stable paths. `archive/` remains as history's address, nothing
@@ -268,32 +289,44 @@ does.
 **The new format has no terminal section.** Earlier drafts kept an `Outcome`
 section to be written at archiving time; born-final removes the moment it would
 have been written, and an empty stub waiting for that moment is the exact
-anti-pattern the legacy archive documents (four empty `Archive Info` stubs)
-demonstrate. Anything worth saying at the end of a change — limitations, divergence
+anti-pattern the four flattened shipped documents demonstrate with their empty
+`Archive Info` stubs (every document in `archive/` has its section filled in).
+Anything worth saying at the end of a change — limitations, divergence
 from the design — is ordinary content, appended before the final PR merges.
 
 **Separate commits for the format change and the bookkeeping.** The format change
 is reviewable on its own; the flattening is its mechanical consequence. Matches the
 repository's `docs(prd):` pattern.
 
-## Open Questions
+**The `PrdDocsTests` guard ships with this change after all.** The first draft
+declined it as an explicit non-goal and parked it as an open question; the deep
+review of this PR judged the recorded cost understated — every surviving obligation
+was discipline-guarded while the four invariants are mechanically checkable — and
+reversed the decision deliberately. Invariant 1 distinguishes new-format from
+legacy documents by a closed allowlist of the eleven flattened files (the set can
+never grow — `active/` is gone), and invariant 4 exempts this spec, which records
+the removed paths by design (mirroring verification checks 4–5 below).
 
-Whether to add the `PrdDocsTests` guard described in the PRD's Risks. Its four
-invariants are local and network-free, and the `UpdateXmlTests.cs` harness is
-directly reusable. Declined this round as an explicit non-goal; recorded here so it
-is revisited deliberately rather than by default.
+**A PR-template checkbox links to the trigger rules instead of copying them.**
+`.github/PULL_REQUEST_TEMPLATE.md` (also review-added) puts one checkbox at the PR
+gate — the one boundary every change passes regardless of authoring tool — and
+points at root `CLAUDE.md` rather than restating the rules, so they live in one
+place and cannot drift.
 
 ## Test Strategy
 
-- **Unit / E2E**: none — this change touches no application code, and automated
-  validation of the documents is an explicit non-goal (the four checks a guard
-  would run are listed in the PRD's Risks).
+- **Unit**: `TarkovHelper.Tests/PrdDocsTests.cs` locks down the four format
+  invariants listed in the PRD's Risks (no kept-current field in new-format
+  documents, spec↔PRD pairing, `.ko.md` pairing, path resolution) — added during
+  the PR's deep review, reversing the earlier non-goal.
+- **E2E**: none — this change touches no application code.
 - No docs lint target exists to run (no `.markdownlint*`, no docs step in either
   workflow).
 
-The structural guard is the design itself: the new templates contain no field that
-has to be kept current and no section that waits for a later moment. Reviewing the
-two templates for either is the single most valuable review action on this change.
+The other structural guard is the design itself: the new templates contain no field
+that has to be kept current and no section that waits for a later moment. Reviewing
+the two templates for either is the single most valuable review action on this
+change.
 
 ## Verification
 
@@ -308,7 +341,8 @@ references this change updates.
 Test-Path docs/PRDs/active
 #    expected: False
 Get-ChildItem docs/PRDs/*.md
-#    expected: the README plus the thirteen flattened documents
+#    expected: the README plus thirteen documents (eleven flattened + this
+#    change's own pair)
 
 # 2. The README and templates reference no deleted agent (legacy documents keep
 #    their history and are deliberately out of scope)
@@ -329,11 +363,18 @@ git grep -h -o -E "docs/PRDs/[A-Za-z0-9_/.-]+\.md" -- . ":!docs/PRDs/feature-dec
 #    expected: no output (this spec is excluded for the same reason as check 4 —
 #    it records the removed paths and the deleted template by design)
 
-# 6. The moves registered as renames, not delete+add — run after committing
+# 6. The moves registered as renames, not delete+add — run after committing.
+#    This inspects the flattening commit itself; in the PR view against main,
+#    the eleven pre-existing files are renames and this change's own pair are
+#    additions.
 git show --stat -M HEAD
 
 # 7. Nothing in the C# build was disturbed
 dotnet build TarkovHelper.sln
+
+# 8. The four decision-doc format invariants hold
+dotnet test TarkovHelper.Tests/TarkovHelper.Tests.csproj --filter "FullyQualifiedName~PrdDocsTests"
+#    expected: 4 passing
 ```
 
 By eye, for each corrected legacy file: the corrected `Status` line and any

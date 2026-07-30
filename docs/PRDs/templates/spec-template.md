@@ -7,6 +7,8 @@
 > and merge it in the same PR as the work. Nothing is kept current: fields are
 > written once, discoveries are appended. A later change that reverses a decision
 > here appends `Superseded by <doc>` below this line, in the PR that reverses it.
+> If this spec records a decision whose implementation is deliberately deferred,
+> say so explicitly — a merged spec is otherwise read as shipped.
 
 ## Summary
 The design in a few sentences: what changes, and the one or two ideas it rests on.
@@ -45,5 +47,6 @@ Commands to run, including any manual check, and the observable result that prov
 it works.
 
 ## Risks & Migration
-Data migration, ordering, compatibility, rollback. Known limitations of the shipped
-result go here before the final PR merges.
+Data migration, ordering, compatibility, rollback. Technical limitations of the
+shipped result go here before the final PR merges (user-facing limitations belong
+in the sibling PRD's Risks).

@@ -33,5 +33,6 @@ recording. Where a rejected alternative had real merit, give it its own paragrap
 Append decisions discovered during implementation as they happen.
 
 ## Risks
-User-facing risk, and what makes it acceptable. If the shipped result has known
-limitations, record them here before the final PR merges.
+User-facing risk, and what makes it acceptable. If the shipped result has a
+user-facing limitation, record it here before the final PR merges (technical
+limitations belong in the sibling spec's Risks & Migration).
