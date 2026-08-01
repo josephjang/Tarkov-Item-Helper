@@ -85,16 +85,9 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
 
     // ---------- shared choreography ----------
 
+    /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
     private static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (condition()) return;
-            Thread.Sleep(250);
-        }
-        Assert.Fail($"timed out waiting for: {what}");
-    }
+        => AppDriver.PollUntil(condition, what, timeoutSeconds);
 
     /// <summary>
     /// On the Quests tab: filter to Locked + the quest's name, open the quest, and
@@ -121,8 +114,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     public void Prerequisite_link_preserves_filters_and_show_in_list_is_the_explicit_reset()
     {
         var (questName, prereqName) = FindLockedQuestWithActivePrereq();
-        using var app = AppDriver.Launch(NewConfigDir());
-        app.ShowWindow(Win32.SW_MAXIMIZE);
+        using var app = LaunchMaximized();
 
         NavigateToHiddenPrereq(app, questName, prereqName);
 
@@ -145,11 +137,53 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     }
 
     [E2EFact]
+    public void Detail_buttons_act_on_the_shown_quest_while_it_is_hidden_by_filters()
+    {
+        var (questName, prereqName) = FindLockedQuestWithActivePrereq();
+        using var app = LaunchMaximized();
+
+        NavigateToHiddenPrereq(app, questName, prereqName);
+        app.WaitForElementVisibility("BtnShowInList", visible: true);
+
+        // The list selection is intentionally null in this state, but the detail
+        // panel's action buttons must still act on the shown quest — Mark Complete
+        // completes the prerequisite, which flips its button row (Complete hides,
+        // Reset appears) via the progress-change refresh.
+        app.InvokeElement("BtnComplete");
+        app.WaitForElementVisibility("BtnComplete", visible: false);
+        app.WaitForElementVisibility("BtnReset", visible: true);
+
+        // Cross-check through the list: the prerequisite is now Done, so the Done
+        // filter reveals it and reconciliation re-selects it.
+        app.SetTextBoxValue("TxtSearch", "");
+        app.SelectComboItemByName("CmbStatus", "Done");
+        app.WaitForElementVisibility("BtnShowInList", visible: false);
+        app.WaitForListSelection("LstQuests", hasSelection: true);
+        Assert.Equal(prereqName, app.GetElementText("TxtDetailName"));
+    }
+
+    [E2EFact]
+    public void Ctrl_click_deselect_collapses_the_detail_panel()
+    {
+        using var app = LaunchMaximized();
+
+        app.SelectTab("TabQuests", "LstQuests");
+        app.SelectListItemAt("LstQuests", 0);
+        WaitUntil(() => app.IsElementVisible("TxtDetailName"), "detail panel to render");
+
+        // Ctrl+Click on the selected row toggles the selection off; the panel must
+        // return to the empty placeholder instead of resurrecting the quest.
+        app.CtrlClickElement(app.GetListItemAt("LstQuests", 0));
+        app.WaitForListSelection("LstQuests", hasSelection: false);
+        WaitUntil(() => !app.IsElementVisible("TxtDetailName"), "detail panel to collapse");
+        WaitUntil(() => app.IsElementVisible("TxtSelectQuest"), "select-a-quest placeholder to appear");
+    }
+
+    [E2EFact]
     public void Filter_change_that_reveals_the_shown_quest_selects_it_and_hides_the_notice()
     {
         var (questName, prereqName) = FindLockedQuestWithActivePrereq();
-        using var app = AppDriver.Launch(NewConfigDir());
-        app.ShowWindow(Win32.SW_MAXIMIZE);
+        using var app = LaunchMaximized();
 
         NavigateToHiddenPrereq(app, questName, prereqName);
         app.WaitForElementVisibility("BtnShowInList", visible: true);
@@ -172,8 +206,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     public void Items_page_quest_link_preserves_quest_tab_filters()
     {
         var questNames = AllQuestNames();
-        using var app = AppDriver.Launch(NewConfigDir());
-        app.ShowWindow(Win32.SW_MAXIMIZE);
+        using var app = LaunchMaximized();
 
         // Park the quest tab on a non-default filter, then leave the tab.
         app.SelectTab("TabQuests", "LstQuests");
@@ -197,8 +230,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     public void Collector_page_quest_link_preserves_quest_tab_filters()
     {
         var questNames = AllQuestNames();
-        using var app = AppDriver.Launch(NewConfigDir());
-        app.ShowWindow(Win32.SW_MAXIMIZE);
+        using var app = LaunchMaximized();
 
         app.SelectTab("TabQuests", "LstQuests");
         app.SelectComboItemByName("CmbStatus", "Done");
@@ -220,8 +252,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     public void Recommendation_click_preserves_filters_when_target_is_filtered_out()
     {
         var questNames = AllQuestNames();
-        using var app = AppDriver.Launch(NewConfigDir());
-        app.ShowWindow(Win32.SW_MAXIMIZE);
+        using var app = LaunchMaximized();
 
         app.SelectTab("TabQuests", "LstQuests");
         app.WaitForElementVisibility("RecommendationsExpander", visible: true, timeoutSeconds: 60);

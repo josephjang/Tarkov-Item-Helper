@@ -476,7 +476,9 @@ namespace TarkovHelper.Pages
             });
         }
 
-        private async Task LoadItemsAsync()
+        // Fully synchronous today (raised CS1998 as an async method); keeps the Task
+        // signature so the awaiting callers stay untouched if it grows real awaits later.
+        private Task LoadItemsAsync()
         {
             // Get hideout requirements
             var hideoutItems = _hideoutProgressService.GetAllRemainingItemRequirements();
@@ -601,6 +603,7 @@ namespace TarkovHelper.Pages
             }
 
             // Note: Image loading is now done separately via LoadImagesInBackgroundAsync()
+            return Task.CompletedTask;
         }
 
         /// <summary>
