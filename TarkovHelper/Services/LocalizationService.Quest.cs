@@ -95,6 +95,25 @@ public partial class LocalizationService
         _ => "All"
     };
 
+    /// <summary>
+    /// Detail-panel notice shown when the displayed quest is not in the filtered
+    /// quest list (see QuestListPage.UpdateFilteredOutNotice).
+    /// </summary>
+    public string QuestHiddenByFilters => CurrentLanguage switch
+    {
+        AppLanguage.KO => "이 퀘스트는 현재 필터에서 목록에 표시되지 않습니다.",
+        AppLanguage.JA => "このクエストは現在のフィルターではリストに表示されていません。",
+        _ => "This quest is hidden by the current filters."
+    };
+
+    /// <summary>Button beside <see cref="QuestHiddenByFilters"/>: resets the filters.</summary>
+    public string ShowInList => CurrentLanguage switch
+    {
+        AppLanguage.KO => "목록에 표시",
+        AppLanguage.JA => "リストに表示",
+        _ => "Show in list"
+    };
+
     public string PrerequisitesPreview => CurrentLanguage switch
     {
         AppLanguage.KO => "선행 퀘스트 미리보기",

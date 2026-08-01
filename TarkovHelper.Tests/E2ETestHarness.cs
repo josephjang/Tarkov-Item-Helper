@@ -221,6 +221,197 @@ internal sealed class AppDriver : IDisposable
         ((InvokePattern)element.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
     }
 
+    /// <summary>The element's UIA Name (for a TextBlock, its rendered text).</summary>
+    public string GetElementText(string automationId)
+        => WaitForElement(automationId).Current.Name;
+
+    /// <summary>Reads a TextBox's text via ValuePattern.</summary>
+    public string GetTextBoxValue(string automationId)
+        => ((ValuePattern)WaitForElement(automationId).GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+
+    /// <summary>Sets a TextBox's text via ValuePattern (fires TextChanged like typing).</summary>
+    public void SetTextBoxValue(string automationId, string text)
+        => ((ValuePattern)WaitForElement(automationId).GetCurrentPattern(ValuePattern.Pattern)).SetValue(text);
+
+    /// <summary>
+    /// Opens a combo box and selects the item whose UIA Name (ComboBoxItem Content)
+    /// matches. WPF materializes combo items lazily, so the item is polled for after
+    /// the expand.
+    /// </summary>
+    public void SelectComboItemByName(string comboAutomationId, string itemName)
+    {
+        var combo = WaitForElement(comboAutomationId);
+        var expand = (ExpandCollapsePattern)combo.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        expand.Expand();
+        try
+        {
+            AutomationElement? item = null;
+            PollUntil(() =>
+            {
+                item = combo.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, itemName));
+                return item != null;
+            }, DateTime.UtcNow + TimeSpan.FromSeconds(15),
+                () => $"combo item '{itemName}' did not appear in '{comboAutomationId}'");
+            Select(item!);
+        }
+        finally
+        {
+            expand.Collapse();
+        }
+    }
+
+    /// <summary>Expands an Expander-like element (ExpandCollapsePattern).</summary>
+    public void ExpandElement(string automationId)
+        => ((ExpandCollapsePattern)WaitForElement(automationId).GetCurrentPattern(ExpandCollapsePattern.Pattern))
+            .Expand();
+
+    /// <summary>Whether the list currently has a selected item (SelectionPattern).</summary>
+    public bool ListHasSelection(string listAutomationId)
+        => ((SelectionPattern)WaitForElement(listAutomationId).GetCurrentPattern(SelectionPattern.Pattern))
+            .Current.GetSelection().Length > 0;
+
+    /// <summary>Polls until the list's selection state matches.</summary>
+    public void WaitForListSelection(string listAutomationId, bool hasSelection, int timeoutSeconds = 30)
+        => PollUntil(
+            () => ListHasSelection(listAutomationId) == hasSelection,
+            DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"list '{listAutomationId}' selection did not become {(hasSelection ? "non-empty" : "empty")} " +
+                  $"within {timeoutSeconds}s");
+
+    /// <summary>
+    /// Selects the Nth (0-based) ListItem child of a list, waiting for the list to have
+    /// that many items first.
+    /// </summary>
+    public void SelectListItemAt(string listAutomationId, int index)
+    {
+        var list = WaitForElement(listAutomationId);
+        AutomationElement? item = null;
+        PollUntil(() =>
+        {
+            var items = list.FindAll(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+            if (items.Count <= index) return false;
+            item = items[index];
+            return true;
+        }, DateTime.UtcNow + TimeSpan.FromSeconds(30),
+            () => $"list '{listAutomationId}' never had {index + 1} item(s)");
+        Select(item!);
+    }
+
+    /// <summary>
+    /// Scrolls a ScrollViewer to the bottom (no-op when its content already fits), so
+    /// elements near the end of the content become clickable.
+    /// </summary>
+    public void ScrollToBottom(string scrollViewerAutomationId)
+    {
+        var viewer = WaitForElement(scrollViewerAutomationId);
+        var scroll = (ScrollPattern)viewer.GetCurrentPattern(ScrollPattern.Pattern);
+        if (scroll.Current.VerticallyScrollable)
+        {
+            scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+            Thread.Sleep(100); // let the layout settle before GetClickablePoint
+        }
+    }
+
+    /// <summary>
+    /// Finds a Text element (TextBlock) by its rendered text, optionally scoped under
+    /// another element, and returns it. TextBlock link "buttons" in this app are wired
+    /// via MouseLeftButtonDown, which UIA cannot invoke — pair with ClickElement.
+    /// </summary>
+    public AutomationElement WaitForTextElement(string text, string? scopeAutomationId = null,
+        int timeoutSeconds = 30)
+    {
+        var scope = scopeAutomationId == null ? _uiaRoot : WaitForElement(scopeAutomationId);
+        AutomationElement? element = null;
+        PollUntil(() =>
+        {
+            element = scope.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.NameProperty, text),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)));
+            return element != null;
+        }, DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"text element '{text}' did not appear" +
+                  (scopeAutomationId == null ? "" : $" under '{scopeAutomationId}'"));
+        return element!;
+    }
+
+    /// <summary>
+    /// Clicks an element with the real mouse (foregrounds the window first). Needed for
+    /// elements without InvokePattern — the app's TextBlock links handle
+    /// MouseLeftButtonDown directly. Requires the element to be on screen; scroll it
+    /// into view first (see ScrollToBottom / ClickTextElementWithScroll).
+    /// </summary>
+    public void ClickElement(AutomationElement element)
+    {
+        Win32.SetForegroundWindow(_hwnd);
+        Thread.Sleep(150);
+        var point = element.GetClickablePoint(); // physical screen px (host is per-monitor-v2)
+        Win32.ClickAt((int)point.X, (int)point.Y);
+        Thread.Sleep(150);
+    }
+
+    /// <summary>
+    /// Clicks a TextBlock link that may sit outside its ScrollViewer's viewport: tries
+    /// the current scroll position first, then walks the viewer's scroll positions until
+    /// the element reports a clickable point.
+    /// </summary>
+    public void ClickTextElementWithScroll(string text, string scopeAutomationId,
+        string scrollViewerAutomationId)
+    {
+        var viewer = WaitForElement(scrollViewerAutomationId);
+        var scroll = (ScrollPattern)viewer.GetCurrentPattern(ScrollPattern.Pattern);
+        var element = WaitForTextElement(text, scopeAutomationId);
+
+        foreach (var percent in new double[] { -1, 0, 25, 50, 75, 100 }) // -1 = current position
+        {
+            if (percent >= 0)
+            {
+                if (!scroll.Current.VerticallyScrollable) break; // content fits; nothing to walk
+                scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
+                Thread.Sleep(100); // let the layout settle before GetClickablePoint
+            }
+            try
+            {
+                ClickElement(element);
+                return;
+            }
+            catch (NoClickablePointException)
+            {
+                // off-screen at this scroll position — try the next one
+            }
+        }
+        throw new InvalidOperationException(
+            $"could not bring text element '{text}' into view inside '{scrollViewerAutomationId}'");
+    }
+
+    /// <summary>
+    /// All Text (TextBlock) descendants under an element, for callers that need to
+    /// inspect rendered names (e.g. picking a known quest link out of a template list).
+    /// </summary>
+    public IReadOnlyList<AutomationElement> GetTextElements(string scopeAutomationId)
+        => TextElementsUnder(WaitForElement(scopeAutomationId));
+
+    /// <summary>
+    /// Like <see cref="GetTextElements"/> but non-waiting: returns an empty list when
+    /// the scope element is not in the UIA tree right now (WPF drops collapsed
+    /// sections from the tree entirely).
+    /// </summary>
+    public IReadOnlyList<AutomationElement> TryGetTextElements(string scopeAutomationId)
+    {
+        var scope = TryFindElement(scopeAutomationId);
+        return scope == null ? Array.Empty<AutomationElement>() : TextElementsUnder(scope);
+    }
+
+    private static IReadOnlyList<AutomationElement> TextElementsUnder(AutomationElement scope)
+    {
+        var found = scope.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text));
+        var result = new List<AutomationElement>(found.Count);
+        foreach (AutomationElement element in found) result.Add(element);
+        return result;
+    }
+
     private static void Select(AutomationElement element)
         => ((SelectionItemPattern)element.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
 
@@ -409,6 +600,21 @@ internal static class Win32
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
+    private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+
+    /// <summary>Left-clicks at a physical screen coordinate with the real cursor.</summary>
+    public static void ClickAt(int x, int y)
+    {
+        SetCursorPos(x, y);
+        Thread.Sleep(50); // give WPF hit-testing the cursor position before the press
+        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+    }
+
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extraInfo);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);

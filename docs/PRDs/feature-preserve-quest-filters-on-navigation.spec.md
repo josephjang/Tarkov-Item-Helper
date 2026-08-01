@@ -138,6 +138,32 @@ predicate gets the filter semantics under test cheaply, and the E2E tests cover 
 wiring. The extraction is behavior-preserving by construction (same expression,
 inputs captured into a record).
 
+**(Appended during implementation) `ResetFiltersForNavigation` became
+`ResetFilters`.** With no navigation path calling it, the "ForNavigation" suffix
+described a caller that no longer exists; its sole caller is `BtnShowInList_Click`.
+
+**(Appended) The reveal action does not force visibility past the faction filter.**
+`ResetFilters` deliberately leaves the faction toggle alone — it is a profile
+setting, not a filter default — so an other-faction quest can stay hidden after
+"Show in list", in which case the notice simply stays up, truthfully. The old
+navigation reset had the same hole (its highlight silently failed); the difference
+is that the state is now visible instead of silent.
+
+**(Appended) `UpdateDetailPanel` falls back to `_currentDetailTask`.** Refresh
+paths (progress/language/DB events) call `UpdateDetailPanel()` with no override
+while the shown quest may have no list selection; resolving the shown quest as
+`override ?? selection ?? _currentDetailTask` (matched by `NormalizedName`, so DB
+reloads with fresh instances still resolve) keeps the panel from collapsing. The
+empty-state placeholder still appears until the first quest is viewed.
+
+**(Appended) E2E probes work around missing UIA peers.** WPF `Border`/`StackPanel`
+have no UI Automation peers, so `PnlFilteredOutNotice` itself is invisible to UIA —
+the tests probe `BtnShowInList` instead. For the same reason the Items/Collector
+detail `ScrollViewer`s gained `x:Name="DetailScrollViewer"` (test addressing only),
+and the harness grew real-mouse clicking (`ClickElement` and scroll-and-retry
+`ClickTextElementWithScroll`) because the app's TextBlock links are wired via
+`MouseLeftButtonDown`, which exposes no `InvokePattern`.
+
 ## Test Strategy
 
 - **Unit** (`QuestListFilterTests`): lock down the predicate invariants that the

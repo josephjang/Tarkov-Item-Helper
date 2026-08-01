@@ -140,8 +140,9 @@ namespace TarkovHelper.Pages
 
         private async void OnDatabaseRefreshed(object? sender, EventArgs e)
         {
-            // DB 업데이트 후 데이터 다시 로드
-            await Dispatcher.InvokeAsync(async () =>
+            // DB 업데이트 후 데이터 다시 로드 (the lambda is fully synchronous — it was
+            // needlessly async, which raised CS1998)
+            await Dispatcher.InvokeAsync(() =>
             {
                 // Item lookup 새로고침
                 _itemLookup = ItemDbService.Instance.GetItemLookup();
@@ -268,55 +269,65 @@ namespace TarkovHelper.Pages
         }
 
         /// <summary>
-        /// Internal method to select a quest (called when data is ready)
+        /// Internal method to select a quest (called when data is ready). Never touches
+        /// the filters (see feature-preserve-quest-filters-on-navigation.md): when the
+        /// current filters hide the target, only the detail panel switches and the
+        /// hidden-by-filters notice offers the explicit reset via BtnShowInList.
         /// </summary>
         private void SelectQuestInternal(string questNormalizedName)
         {
-            // Reset filters to ensure the quest is visible
-            ResetFiltersForNavigation();
-
-            // Find the quest view model
-            var questVm = _allQuestViewModels.FirstOrDefault(vm =>
-                string.Equals(vm.Task.NormalizedName, questNormalizedName, StringComparison.OrdinalIgnoreCase));
-
+            var questVm = FindQuestViewModel(questNormalizedName);
             if (questVm == null) return;
 
-            // Disable selection changed event BEFORE ApplyFilters to prevent
-            // the detail panel from being hidden when ItemsSource changes
-            LstQuests.SelectionChanged -= LstQuests_SelectionChanged;
-
-            // Apply filters to update the list
-            ApplyFilters();
-
-            // Use Dispatcher to ensure UI is updated before selection
-            Dispatcher.BeginInvoke(new Action(() =>
+            if (LstQuests.ItemsSource is List<QuestViewModel> filtered && filtered.Contains(questVm))
             {
-                try
+                // Visible under the current filters: a plain selection. SelectionChanged
+                // renders the detail panel; when the quest is already selected the event
+                // will not fire, so render explicitly in that case.
+                if (ReferenceEquals(LstQuests.SelectedItem, questVm))
                 {
-                    // Select the quest in the list
-                    LstQuests.SelectedItem = questVm;
-
-                    // Scroll to make it visible
-                    LstQuests.ScrollIntoView(questVm);
-
-                    // Force UI update
-                    LstQuests.UpdateLayout();
-
-                    // Force update detail panel with the specific quest
                     UpdateDetailPanel(questVm);
                 }
-                finally
+                else
                 {
-                    // Re-enable selection changed event
-                    LstQuests.SelectionChanged += LstQuests_SelectionChanged;
+                    LstQuests.SelectedItem = questVm;
                 }
-            }), System.Windows.Threading.DispatcherPriority.Loaded);
+                LstQuests.ScrollIntoView(questVm);
+                return;
+            }
+
+            // Hidden by the current filters: switch only the detail panel, leaving the
+            // filters and the list untouched. Clear the selection (with the handler
+            // detached so the panel is not collapsed by the null selection) so the
+            // highlighted row and the panel cannot disagree about the current quest.
+            LstQuests.SelectionChanged -= LstQuests_SelectionChanged;
+            try
+            {
+                LstQuests.SelectedItem = null;
+            }
+            finally
+            {
+                LstQuests.SelectionChanged += LstQuests_SelectionChanged;
+            }
+            UpdateDetailPanel(questVm);
         }
 
         /// <summary>
-        /// Reset filters for navigation to ensure target item is visible
+        /// Find the view model for a quest by NormalizedName, or null when unknown.
         /// </summary>
-        private void ResetFiltersForNavigation()
+        private QuestViewModel? FindQuestViewModel(string? questNormalizedName)
+        {
+            if (string.IsNullOrEmpty(questNormalizedName)) return null;
+            return _allQuestViewModels.FirstOrDefault(vm =>
+                string.Equals(vm.Task.NormalizedName, questNormalizedName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Reset every filter-bar control to its default (the faction toggle is a profile
+        /// setting, not a filter default, so it stays). Only invoked from BtnShowInList —
+        /// navigation itself never resets filters.
+        /// </summary>
+        private void ResetFilters()
         {
             _isInitializing = true;
 
@@ -536,87 +547,36 @@ namespace TarkovHelper.Pages
 
         private void ApplyFilters()
         {
-            var searchText = TxtSearch.Text?.Trim().ToLowerInvariant() ?? string.Empty;
-            var kappaOnly = ChkKappaOnly.IsChecked == true;
-            var itemRequired = ChkItemRequired.IsChecked == true;
+            var criteria = new QuestFilterCriteria(
+                SearchText: TxtSearch.Text ?? string.Empty,
+                KappaOnly: ChkKappaOnly.IsChecked == true,
+                ItemRequired: ChkItemRequired.IsChecked == true,
+                Trader: (CmbTrader.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty,
+                Map: (CmbMap.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty,
+                StatusTag: (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Active",
+                Faction: RbBear.IsChecked == true ? "bear" : (RbUsec.IsChecked == true ? "usec" : null));
 
-            var selectedTrader = (CmbTrader.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty;
-            var selectedMap = (CmbMap.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty;
-            var selectedStatus = (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Active";
+            var filtered = _allQuestViewModels
+                .Where(vm => QuestListFilter.Matches(vm, criteria))
+                // Order by forward progression (unlock) rank so prerequisites appear before the
+                // quests they unlock. Rank is language- and progress-independent (see BuildUnlockRank).
+                .OrderBy(vm => _unlockRank.TryGetValue(vm.Task.NormalizedName ?? string.Empty, out var r) ? r : int.MaxValue)
+                .ToList();
 
-            // Get selected faction
-            var selectedFaction = RbBear.IsChecked == true ? "bear" : (RbUsec.IsChecked == true ? "usec" : null);
-
-            var filtered = _allQuestViewModels.Where(vm =>
+            // Swap ItemsSource with SelectionChanged detached: the swap always clears the
+            // ListBox selection, and routing that non-user event around the handler keeps
+            // SelectionChanged meaning "the user picked a row". ReconcileDetailSelection
+            // then restores the selection/notice state explicitly.
+            LstQuests.SelectionChanged -= LstQuests_SelectionChanged;
+            try
             {
-                // Search filter (multi-language)
-                if (!string.IsNullOrEmpty(searchText))
-                {
-                    var matchName = vm.Task.Name?.ToLowerInvariant().Contains(searchText) == true;
-                    var matchKo = vm.Task.NameKo?.ToLowerInvariant().Contains(searchText) == true;
-                    var matchJa = vm.Task.NameJa?.ToLowerInvariant().Contains(searchText) == true;
-
-                    if (!matchName && !matchKo && !matchJa)
-                        return false;
-                }
-
-                // Kappa filter
-                if (kappaOnly && !vm.Task.ReqKappa)
-                    return false;
-
-                // Item required filter
-                if (itemRequired && (vm.Task.RequiredItems == null || vm.Task.RequiredItems.Count == 0))
-                    return false;
-
-                // Trader filter
-                if (!string.IsNullOrEmpty(selectedTrader) && vm.Task.Trader != selectedTrader)
-                    return false;
-
-                // Map filter
-                if (!string.IsNullOrEmpty(selectedMap))
-                {
-                    if (vm.Task.Maps == null || !vm.Task.Maps.Any(m =>
-                        string.Equals(m, selectedMap, StringComparison.OrdinalIgnoreCase)))
-                        return false;
-                }
-
-                // Status filter
-                if (selectedStatus != "All")
-                {
-                    // "Locked" filter now includes both Locked and LevelLocked
-                    if (selectedStatus == "Locked")
-                    {
-                        if (vm.Status != QuestStatus.Locked && vm.Status != QuestStatus.LevelLocked)
-                            return false;
-                    }
-                    else
-                    {
-                        var statusFilter = Enum.Parse<QuestStatus>(selectedStatus);
-                        if (vm.Status != statusFilter)
-                            return false;
-                    }
-                }
-
-                // Faction filter - hide quests for the other faction
-                // Exception: Show in Unavailable filter so users can see faction-restricted quests
-                if (!string.IsNullOrEmpty(selectedFaction) && !string.IsNullOrEmpty(vm.Task.Faction))
-                {
-                    if (!string.Equals(vm.Task.Faction, selectedFaction, StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Only hide if NOT viewing Unavailable status
-                        if (selectedStatus != "Unavailable")
-                            return false;
-                    }
-                }
-
-                return true;
-            })
-            // Order by forward progression (unlock) rank so prerequisites appear before the
-            // quests they unlock. Rank is language- and progress-independent (see BuildUnlockRank).
-            .OrderBy(vm => _unlockRank.TryGetValue(vm.Task.NormalizedName ?? string.Empty, out var r) ? r : int.MaxValue)
-            .ToList();
-
-            LstQuests.ItemsSource = filtered;
+                LstQuests.ItemsSource = filtered;
+                ReconcileDetailSelection(filtered);
+            }
+            finally
+            {
+                LstQuests.SelectionChanged += LstQuests_SelectionChanged;
+            }
 
             // Update statistics
             var stats = _progressService.GetStatistics();
@@ -703,19 +663,83 @@ namespace TarkovHelper.Pages
             UpdateDetailPanel();
         }
 
+        /// <summary>
+        /// After the filtered list changes, re-point the list selection at the quest the
+        /// detail panel is showing (when it is still visible) and keep the hidden-by-filters
+        /// notice truthful (when it is not). Runs with LstQuests.SelectionChanged detached
+        /// (see ApplyFilters), so restoring the selection does not re-render the panel.
+        /// </summary>
+        private void ReconcileDetailSelection(List<QuestViewModel> filtered)
+        {
+            var detailVm = FindQuestViewModel(_currentDetailTask?.NormalizedName);
+            if (detailVm == null)
+            {
+                UpdateFilteredOutNotice(null);
+                return;
+            }
+
+            LstQuests.SelectedItem = filtered.Contains(detailVm) ? detailVm : null;
+            UpdateFilteredOutNotice(detailVm);
+        }
+
+        /// <summary>
+        /// Shows the hidden-by-filters notice when the detail panel displays a quest that
+        /// is not in the filtered list; hides it otherwise. Notice visibility is always
+        /// derived from this one rule, never toggled ad hoc.
+        /// </summary>
+        private void UpdateFilteredOutNotice(QuestViewModel? shownVm)
+        {
+            var hidden = shownVm != null
+                && LstQuests.ItemsSource is List<QuestViewModel> filtered
+                && !filtered.Contains(shownVm);
+
+            if (hidden)
+            {
+                TxtFilteredOutNotice.Text = _loc.QuestHiddenByFilters;
+                BtnShowInList.Content = _loc.ShowInList;
+            }
+            PnlFilteredOutNotice.Visibility = hidden ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// The explicit escape hatch from the hidden-by-filters state: reproduces the old
+        /// navigation behavior (reset every filter, highlight the quest in the list) as a
+        /// user-invoked action instead of a silent side effect.
+        /// </summary>
+        private void BtnShowInList_Click(object sender, RoutedEventArgs e)
+        {
+            ResetFilters();
+            ApplyFilters();
+
+            // ReconcileDetailSelection re-selected the shown quest if the reset made it
+            // visible. The faction toggle is not part of the reset, so an other-faction
+            // quest can legitimately stay hidden — then the notice stays up, truthfully.
+            if (LstQuests.SelectedItem is QuestViewModel vm)
+            {
+                LstQuests.ScrollIntoView(vm);
+            }
+        }
+
         private void UpdateDetailPanel(QuestViewModel? overrideVm = null)
         {
-            var selectedVm = overrideVm ?? LstQuests.SelectedItem as QuestViewModel;
+            var selectedVm = overrideVm
+                ?? LstQuests.SelectedItem as QuestViewModel
+                // Refresh paths (progress/language/DB events) call this with no selection
+                // while filters hide the shown quest — keep showing it rather than
+                // collapsing the panel (see ReconcileDetailSelection).
+                ?? FindQuestViewModel(_currentDetailTask?.NormalizedName);
 
             if (selectedVm == null)
             {
                 DetailPanel.Visibility = Visibility.Collapsed;
                 TxtSelectQuest.Visibility = Visibility.Visible;
+                UpdateFilteredOutNotice(null);
                 return;
             }
 
             DetailPanel.Visibility = Visibility.Visible;
             TxtSelectQuest.Visibility = Visibility.Collapsed;
+            UpdateFilteredOutNotice(selectedVm);
 
             var task = selectedVm.Task;
             _currentDetailTask = task;
