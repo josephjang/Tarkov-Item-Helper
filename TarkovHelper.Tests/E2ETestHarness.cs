@@ -53,6 +53,10 @@ internal sealed class AppDriver : IDisposable
         };
         psi.ArgumentList.Add(dll);
         psi.Environment["TARKOVHELPER_CONFIG_PATH"] = configDir;
+        // Without this the app's immediate background check can download a newer
+        // tarkov_data.db over the build-output Assets copy mid-test, silently
+        // diverging from the static copy the tests derive their expectations from.
+        psi.Environment["TARKOVHELPER_DISABLE_DB_UPDATE"] = "1";
 
         var process = Process.Start(psi)!;
         try
@@ -257,7 +261,9 @@ internal sealed class AppDriver : IDisposable
         }
         finally
         {
-            expand.Collapse();
+            // Best-effort: a Collapse on a stale/closed combo must not replace the
+            // poll's actionable timeout message with UIA plumbing noise.
+            try { expand.Collapse(); } catch { }
         }
     }
 
@@ -280,10 +286,10 @@ internal sealed class AppDriver : IDisposable
                   $"within {timeoutSeconds}s");
 
     /// <summary>
-    /// Selects the Nth (0-based) ListItem child of a list, waiting for the list to have
-    /// that many items first.
+    /// The Nth (0-based) ListItem child of a list, waiting for the list to have that
+    /// many items first.
     /// </summary>
-    public void SelectListItemAt(string listAutomationId, int index)
+    public AutomationElement GetListItemAt(string listAutomationId, int index)
     {
         var list = WaitForElement(listAutomationId);
         AutomationElement? item = null;
@@ -296,23 +302,12 @@ internal sealed class AppDriver : IDisposable
             return true;
         }, DateTime.UtcNow + TimeSpan.FromSeconds(30),
             () => $"list '{listAutomationId}' never had {index + 1} item(s)");
-        Select(item!);
+        return item!;
     }
 
-    /// <summary>
-    /// Scrolls a ScrollViewer to the bottom (no-op when its content already fits), so
-    /// elements near the end of the content become clickable.
-    /// </summary>
-    public void ScrollToBottom(string scrollViewerAutomationId)
-    {
-        var viewer = WaitForElement(scrollViewerAutomationId);
-        var scroll = (ScrollPattern)viewer.GetCurrentPattern(ScrollPattern.Pattern);
-        if (scroll.Current.VerticallyScrollable)
-        {
-            scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
-            Thread.Sleep(100); // let the layout settle before GetClickablePoint
-        }
-    }
+    /// <summary>Selects the Nth (0-based) ListItem child of a list.</summary>
+    public void SelectListItemAt(string listAutomationId, int index)
+        => Select(GetListItemAt(listAutomationId, index));
 
     /// <summary>
     /// Finds a Text element (TextBlock) by its rendered text, optionally scoped under
@@ -340,7 +335,7 @@ internal sealed class AppDriver : IDisposable
     /// Clicks an element with the real mouse (foregrounds the window first). Needed for
     /// elements without InvokePattern — the app's TextBlock links handle
     /// MouseLeftButtonDown directly. Requires the element to be on screen; scroll it
-    /// into view first (see ScrollToBottom / ClickTextElementWithScroll).
+    /// into view first (see ClickTextElementWithScroll).
     /// </summary>
     public void ClickElement(AutomationElement element)
     {
@@ -348,6 +343,22 @@ internal sealed class AppDriver : IDisposable
         Thread.Sleep(150);
         var point = element.GetClickablePoint(); // physical screen px (host is per-monitor-v2)
         Win32.ClickAt((int)point.X, (int)point.Y);
+        Thread.Sleep(150);
+    }
+
+    /// <summary>
+    /// Like <see cref="ClickElement"/> but with Ctrl held — the WPF single-select
+    /// ListBox gesture that toggles the clicked row's selection OFF, which UIA's
+    /// SelectionItemPattern cannot express for single-selection containers. Clicks
+    /// near the element's LEFT edge rather than its centre: list-row templates put
+    /// action buttons mid/right, and the toggle must land on the row itself.
+    /// </summary>
+    public void CtrlClickElement(AutomationElement element)
+    {
+        Win32.SetForegroundWindow(_hwnd);
+        Thread.Sleep(150);
+        var rect = element.Current.BoundingRectangle; // physical screen px
+        Win32.CtrlClickAt((int)(rect.Left + 15), (int)(rect.Top + rect.Height / 2));
         Thread.Sleep(150);
     }
 
@@ -363,39 +374,41 @@ internal sealed class AppDriver : IDisposable
         var scroll = (ScrollPattern)viewer.GetCurrentPattern(ScrollPattern.Pattern);
         var element = WaitForTextElement(text, scopeAutomationId);
 
-        foreach (var percent in new double[] { -1, 0, 25, 50, 75, 100 }) // -1 = current position
+        // The current scroll position first — most links are already in view.
+        if (TryClickElement(element)) return;
+
+        if (scroll.Current.VerticallyScrollable) // when the content fits, there is nothing to walk
         {
-            if (percent >= 0)
+            foreach (var percent in new double[] { 0, 25, 50, 75, 100 })
             {
-                if (!scroll.Current.VerticallyScrollable) break; // content fits; nothing to walk
                 scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
                 Thread.Sleep(100); // let the layout settle before GetClickablePoint
-            }
-            try
-            {
-                ClickElement(element);
-                return;
-            }
-            catch (NoClickablePointException)
-            {
-                // off-screen at this scroll position — try the next one
+                if (TryClickElement(element)) return;
             }
         }
         throw new InvalidOperationException(
             $"could not bring text element '{text}' into view inside '{scrollViewerAutomationId}'");
     }
 
+    /// <summary>ClickElement, but false instead of throwing when the element is off screen.</summary>
+    private bool TryClickElement(AutomationElement element)
+    {
+        try
+        {
+            ClickElement(element);
+            return true;
+        }
+        catch (NoClickablePointException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// All Text (TextBlock) descendants under an element, for callers that need to
     /// inspect rendered names (e.g. picking a known quest link out of a template list).
-    /// </summary>
-    public IReadOnlyList<AutomationElement> GetTextElements(string scopeAutomationId)
-        => TextElementsUnder(WaitForElement(scopeAutomationId));
-
-    /// <summary>
-    /// Like <see cref="GetTextElements"/> but non-waiting: returns an empty list when
-    /// the scope element is not in the UIA tree right now (WPF drops collapsed
-    /// sections from the tree entirely).
+    /// Non-waiting: returns an empty list when the scope element is not in the UIA tree
+    /// right now (WPF drops collapsed sections from the tree entirely).
     /// </summary>
     public IReadOnlyList<AutomationElement> TryGetTextElements(string scopeAutomationId)
     {
@@ -426,8 +439,9 @@ internal sealed class AppDriver : IDisposable
     /// <summary>
     /// Shared poll loop (250ms cadence) behind every wait helper, so the retry/timeout
     /// mechanics live in one place instead of drifting across near-identical copies.
+    /// Internal so test classes reuse it for their own conditions too.
     /// </summary>
-    private static void PollUntil(Func<bool> condition, DateTime deadline, Func<string> timeoutMessage)
+    internal static void PollUntil(Func<bool> condition, DateTime deadline, Func<string> timeoutMessage)
     {
         while (DateTime.UtcNow < deadline)
         {
@@ -436,6 +450,11 @@ internal sealed class AppDriver : IDisposable
         }
         throw new TimeoutException(timeoutMessage());
     }
+
+    /// <summary>Convenience overload for test-local conditions: timeout in seconds from now.</summary>
+    internal static void PollUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
+        => PollUntil(condition, DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"timed out waiting for: {what}");
 
     private AutomationElement? TryFindElement(string automationId)
         => _uiaRoot.FindFirst(
@@ -490,6 +509,27 @@ public abstract class E2ETestBase : IDisposable
         var dir = Path.Combine(_root, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
+    }
+
+    /// <summary>
+    /// Launches the app against a fresh throwaway Config dir and maximizes its window.
+    /// private protected because the AppDriver return type is internal.
+    /// </summary>
+    private protected AppDriver LaunchMaximized()
+    {
+        var app = AppDriver.Launch(NewConfigDir());
+        try
+        {
+            app.ShowWindow(Win32.SW_MAXIMIZE);
+            return app;
+        }
+        catch
+        {
+            // Preserve the disposal the inline `using var app = ...` form provided
+            // when ShowWindow throws after a successful launch.
+            app.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()
@@ -611,6 +651,24 @@ internal static class Win32
         mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
     }
+
+    /// <summary>Left-clicks with Ctrl held (the toggle-selection gesture).</summary>
+    public static void CtrlClickAt(int x, int y)
+    {
+        keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+        try
+        {
+            ClickAt(x, y);
+        }
+        finally
+        {
+            keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        }
+    }
+
+    private const byte VK_CONTROL = 0x11;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extraInfo);
 
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);

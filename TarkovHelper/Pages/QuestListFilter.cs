@@ -15,7 +15,16 @@ namespace TarkovHelper.Pages
         string Trader,
         string Map,
         string StatusTag,
-        string? Faction);
+        string? Faction)
+    {
+        /// <summary>
+        /// SearchText trimmed and lower-cased once at construction, so the per-quest
+        /// predicate does not re-normalize the same string for every quest. Computed
+        /// from the constructor argument — a `with`-mutation of SearchText would NOT
+        /// recompute it, so treat the record as the one-shot filter-bar snapshot it is.
+        /// </summary>
+        public string NormalizedSearchText { get; } = SearchText?.Trim().ToLowerInvariant() ?? string.Empty;
+    }
 
     /// <summary>
     /// The quest-list filter predicate, extracted from QuestListPage.ApplyFilters so
@@ -28,7 +37,7 @@ namespace TarkovHelper.Pages
         public static bool Matches(QuestViewModel vm, QuestFilterCriteria criteria)
         {
             // Search filter (multi-language)
-            var searchText = criteria.SearchText?.Trim().ToLowerInvariant() ?? string.Empty;
+            var searchText = criteria.NormalizedSearchText;
             if (!string.IsNullOrEmpty(searchText))
             {
                 var matchName = vm.Task.Name?.ToLowerInvariant().Contains(searchText) == true;
@@ -70,7 +79,11 @@ namespace TarkovHelper.Pages
                 }
                 else
                 {
-                    var statusFilter = Enum.Parse<QuestStatus>(criteria.StatusTag);
+                    // An unrecognized tag (a future ComboBox typo, or a new caller of
+                    // this public predicate) matches nothing rather than throwing
+                    // ArgumentException on the UI thread mid-ApplyFilters.
+                    if (!Enum.TryParse<QuestStatus>(criteria.StatusTag, out var statusFilter))
+                        return false;
                     if (vm.Status != statusFilter)
                         return false;
                 }

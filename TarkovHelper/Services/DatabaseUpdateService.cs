@@ -118,6 +118,16 @@ public sealed class DatabaseUpdateService : IDisposable
     /// </summary>
     public void StartBackgroundUpdates()
     {
+        // E2e tests disable the automatic checks: the immediate first check would
+        // download a newer DB over the build-output Assets copy the tests derive
+        // their expectations from (see AppEnv.DisableDbUpdate). Manual checks via
+        // CheckAndUpdateAsync stay available.
+        if (TarkovHelper.Debug.AppEnv.DisableDbUpdate)
+        {
+            _log.Info("Background update checks disabled via TARKOVHELPER_DISABLE_DB_UPDATE");
+            return;
+        }
+
         _log.Info("Starting background update checks (every 5 minutes)");
         _updateTimer.Change(0, UPDATE_INTERVAL_MS); // 즉시 시작 후 5분마다 반복
     }

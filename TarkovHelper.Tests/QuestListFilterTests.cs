@@ -171,6 +171,25 @@ public sealed class QuestListFilterTests
     }
 
     [Fact]
+    public void Unknown_status_tag_matches_nothing_instead_of_throwing()
+    {
+        // A typo'd ComboBox tag or a careless new caller of the public predicate must
+        // degrade to an empty result, not throw ArgumentException on the UI thread.
+        foreach (QuestStatus status in Enum.GetValues<QuestStatus>())
+        {
+            Assert.False(QuestListFilter.Matches(
+                Vm(status: status), AllCriteria(statusTag: "NoSuchStatus")));
+        }
+    }
+
+    [Fact]
+    public void Search_text_is_normalized_once_at_construction()
+    {
+        Assert.Equal("debut", AllCriteria(searchText: "  DeBuT  ").NormalizedSearchText);
+        Assert.Equal(string.Empty, AllCriteria().NormalizedSearchText);
+    }
+
+    [Fact]
     public void Criteria_combine_with_and_semantics()
     {
         var vm = Vm(name: "Shortage", status: QuestStatus.Active, trader: "Therapist",

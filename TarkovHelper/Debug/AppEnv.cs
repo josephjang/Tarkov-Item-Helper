@@ -26,5 +26,15 @@ namespace TarkovHelper.Debug
         public static string ConfigPath { get; set; } =
             Environment.GetEnvironmentVariable("TARKOVHELPER_CONFIG_PATH")
             ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config");
+
+        /// <summary>
+        /// True when the TARKOVHELPER_DISABLE_DB_UPDATE environment variable is set
+        /// (any non-empty value). E2e tests set it so the launched app never downloads
+        /// a newer tarkov_data.db over the build-output Assets copy mid-test — the
+        /// tests derive their expectations from a static copy of that same DB, and a
+        /// background update would make the two silently diverge.
+        /// </summary>
+        public static bool DisableDbUpdate { get; } =
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TARKOVHELPER_DISABLE_DB_UPDATE"));
     }
 }
