@@ -333,6 +333,28 @@
 
                         <!-- Fixed Header Section -->
                         <StackPanel Grid.Row="0">
+                            <!-- Hidden-by-filters notice: visible when the shown quest is
+                                 not in the filtered list (see UpdateFilteredOutNotice) -->
+                            <Border x:Name="PnlFilteredOutNotice" Visibility="Collapsed"
+                                    Background="{StaticResource BackgroundDarkBrush}"
+                                    BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                                    CornerRadius="4" Padding="8" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="TxtFilteredOutNotice" Grid.Column="0"
+                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                    <Button x:Name="BtnShowInList" Grid.Column="1" Padding="8,4"
+                                            FontSize="{DynamicResource FontSizeTiny}"
+                                            VerticalAlignment="Center" Click="BtnShowInList_Click"/>
+                                </Grid>
+                            </Border>
+
                             <!-- Quest Title -->
                             <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
                                        Foreground="{StaticResource AccentBrush}"
