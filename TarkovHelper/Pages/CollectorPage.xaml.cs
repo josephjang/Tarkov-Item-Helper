@@ -179,7 +179,9 @@ namespace TarkovHelper.Pages
             });
         }
 
-        private async Task LoadItemsAsync()
+        // Fully synchronous today (raised CS1998 as an async method); keeps the Task
+        // signature so the awaiting callers stay untouched if it grows real awaits later.
+        private Task LoadItemsAsync()
         {
             var includePreQuest = ChkIncludePreQuest.IsChecked == true;
             var collectorItems = GetCollectorItemRequirements(includePreQuest);
@@ -213,6 +215,8 @@ namespace TarkovHelper.Pages
                 vm.OwnedFirQuantity = inventory.FirQuantity;
                 vm.OwnedNonFirQuantity = inventory.NonFirQuantity;
             }
+
+            return Task.CompletedTask;
         }
 
         /// <summary>

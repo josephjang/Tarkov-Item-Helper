@@ -164,6 +164,44 @@ and the harness grew real-mouse clicking (`ClickElement` and scroll-and-retry
 `ClickTextElementWithScroll`) because the app's TextBlock links are wired via
 `MouseLeftButtonDown`, which exposes no `InvokePattern`.
 
+**(Appended after deep review) Scroll is deferred again on list-mutating paths.**
+The claim above that the `Dispatcher.BeginInvoke` choreography "is no longer
+needed" held only for plain in-list navigation: the deep-link replay (`Loaded` →
+`ApplyFilters` → `SelectQuestInternal`) and `BtnShowInList_Click` both scroll
+right after an `ItemsSource` swap, where a synchronous `ScrollIntoView` can
+silently fail to scroll the virtualizing panel. Both paths now scroll via
+`ScrollQuestIntoView` (`UpdateLayout` + `ScrollIntoView` deferred to
+`DispatcherPriority.Loaded`) — the old guard, kept in one named place.
+`SelectQuestInternal` also re-establishes the old precondition by running
+`ApplyFilters()` first if `ItemsSource` is not yet the filtered list.
+
+**(Appended after deep review) The detail-panel actions resolve the shown quest,
+not the selection.** `BtnComplete_Click`/`BtnReset_Click`/`BtnWiki_Click` read
+`LstQuests.SelectedItem`, which this design intentionally leaves null while the
+shown quest is filtered out — so the buttons silently no-opped in exactly the
+state the notice advertises. They now resolve through `ShownQuestViewModel()`
+(`selection ?? _currentDetailTask`), the same rule `UpdateDetailPanel` uses;
+covered by the `Detail_buttons_act_on_the_shown_quest_while_it_is_hidden_by_filters`
+e2e test.
+
+**(Appended after deep review) Explicit deselection collapses the panel.**
+Because programmatic mutations run with `SelectionChanged` suppressed (a
+`SuppressSelectionChanged` scope shared by `ApplyFilters` and
+`SelectQuestInternal`), a null selection reaching the handler is the user
+Ctrl+Clicking the selected row. The `_currentDetailTask` fallback would otherwise
+resurrect the just-deselected quest and make the empty placeholder unreachable;
+`LstQuests_SelectionChanged` now collapses via `ClearDetailPanel()` (which also
+forgets `_currentDetailTask`), restoring the pre-change deselect behavior. A
+shown quest that vanishes from the loaded data (DB reload) collapses the same
+way. Covered by the `Ctrl_click_deselect_collapses_the_detail_panel` e2e test.
+
+**(Appended after deep review) E2E launches disable DB auto-update.** The app's
+immediate background check could download a newer `tarkov_data.db` over the
+build-output Assets copy mid-test, silently diverging from the static copy the
+tests derive their expectations from. `AppDriver.Launch` sets
+`TARKOVHELPER_DISABLE_DB_UPDATE`, honored by
+`DatabaseUpdateService.StartBackgroundUpdates` (see `AppEnv.DisableDbUpdate`).
+
 ## Test Strategy
 
 - **Unit** (`QuestListFilterTests`): lock down the predicate invariants that the

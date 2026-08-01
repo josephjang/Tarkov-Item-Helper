@@ -42,6 +42,19 @@ namespace TarkovHelper.Pages
         public QuestListPage()
         {
             InitializeComponent();
+            SubscribeServiceEvents();
+
+            Loaded += QuestListPage_Loaded;
+            Unloaded += QuestListPage_Unloaded;
+        }
+
+        /// <summary>
+        /// The service events this page consumes. The constructor, Unloaded, and the
+        /// Loaded re-subscribe all go through this pair, so an event added to one list
+        /// cannot be forgotten in another (a classic WPF leak / double-subscription).
+        /// </summary>
+        private void SubscribeServiceEvents()
+        {
             _loc.LanguageChanged += OnLanguageChanged;
             _progressService.ProgressChanged += OnProgressChanged;
             SettingsService.Instance.HasEodEditionChanged += OnProfileSettingChanged;
@@ -50,15 +63,11 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
             SettingsService.Instance.PlayerFactionChanged += OnPlayerFactionChanged;
             QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-
-            Loaded += QuestListPage_Loaded;
-            Unloaded += QuestListPage_Unloaded;
         }
 
-        private void QuestListPage_Unloaded(object sender, RoutedEventArgs e)
+        /// <summary>Mirror of <see cref="SubscribeServiceEvents"/> — keep the lists in sync.</summary>
+        private void UnsubscribeServiceEvents()
         {
-            _isUnloaded = true;
-            // Unsubscribe from events to prevent memory leaks
             _loc.LanguageChanged -= OnLanguageChanged;
             _progressService.ProgressChanged -= OnProgressChanged;
             SettingsService.Instance.HasEodEditionChanged -= OnProfileSettingChanged;
@@ -69,20 +78,20 @@ namespace TarkovHelper.Pages
             QuestDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
         }
 
+        private void QuestListPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            _isUnloaded = true;
+            // Unsubscribe from events to prevent memory leaks
+            UnsubscribeServiceEvents();
+        }
+
         private async void QuestListPage_Loaded(object sender, RoutedEventArgs e)
         {
             // Re-subscribe events if page was previously unloaded
             if (_isUnloaded)
             {
                 _isUnloaded = false;
-                _loc.LanguageChanged += OnLanguageChanged;
-                _progressService.ProgressChanged += OnProgressChanged;
-                SettingsService.Instance.HasEodEditionChanged += OnProfileSettingChanged;
-                SettingsService.Instance.HasUnheardEditionChanged += OnProfileSettingChanged;
-                SettingsService.Instance.PrestigeLevelChanged += OnPrestigeLevelChanged;
-                SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
-                SettingsService.Instance.PlayerFactionChanged += OnPlayerFactionChanged;
-                QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+                SubscribeServiceEvents();
             }
 
             // Skip if already loaded (prevents re-initialization on tab switching)
@@ -127,15 +136,22 @@ namespace TarkovHelper.Pages
             UpdateDetailPanel();
         }
 
+        /// <summary>
+        /// The standard refresh sequence for a profile/progress state change, shared by
+        /// every state-change handler so the sequence cannot drift between them.
+        /// (OnDatabaseRefreshed is deliberately separate: it reloads data first.)
+        /// </summary>
+        private void RefreshAllForStateChange()
+        {
+            RefreshQuestStatuses();
+            ApplyFilters();
+            UpdateDetailPanel();
+            UpdateRecommendations();
+        }
+
         private void OnProgressChanged(object? sender, EventArgs e)
         {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
+            Dispatcher.Invoke(RefreshAllForStateChange);
         }
 
         private async void OnDatabaseRefreshed(object? sender, EventArgs e)
@@ -159,35 +175,17 @@ namespace TarkovHelper.Pages
 
         private void OnProfileSettingChanged(object? sender, bool e)
         {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
+            Dispatcher.Invoke(RefreshAllForStateChange);
         }
 
         private void OnPrestigeLevelChanged(object? sender, int e)
         {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
+            Dispatcher.Invoke(RefreshAllForStateChange);
         }
 
         private void OnDspDecodeCountChanged(object? sender, int e)
         {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
+            Dispatcher.Invoke(RefreshAllForStateChange);
         }
 
         private void OnPlayerFactionChanged(object? sender, string? e)
@@ -213,10 +211,7 @@ namespace TarkovHelper.Pages
                 }
                 _isInitializing = false;
 
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
+                RefreshAllForStateChange();
             });
         }
 
@@ -279,7 +274,12 @@ namespace TarkovHelper.Pages
             var questVm = FindQuestViewModel(questNormalizedName);
             if (questVm == null) return;
 
-            if (LstQuests.ItemsSource is List<QuestViewModel> filtered && filtered.Contains(questVm))
+            // Re-establish the precondition the pre-refactor code created by always
+            // applying filters itself: the visibility probe below needs ItemsSource to
+            // be the filtered list, or every target would silently count as hidden.
+            if (CurrentFilteredList == null) ApplyFilters();
+
+            if (IsVisibleUnderCurrentFilters(questVm))
             {
                 // Visible under the current filters: a plain selection. SelectionChanged
                 // renders the detail panel; when the quest is already selected the event
@@ -292,22 +292,17 @@ namespace TarkovHelper.Pages
                 {
                     LstQuests.SelectedItem = questVm;
                 }
-                LstQuests.ScrollIntoView(questVm);
+                ScrollQuestIntoView(questVm);
                 return;
             }
 
             // Hidden by the current filters: switch only the detail panel, leaving the
             // filters and the list untouched. Clear the selection (with the handler
-            // detached so the panel is not collapsed by the null selection) so the
+            // suppressed so the panel is not collapsed by the null selection) so the
             // highlighted row and the panel cannot disagree about the current quest.
-            LstQuests.SelectionChanged -= LstQuests_SelectionChanged;
-            try
+            using (SuppressSelectionChanged())
             {
                 LstQuests.SelectedItem = null;
-            }
-            finally
-            {
-                LstQuests.SelectionChanged += LstQuests_SelectionChanged;
             }
             UpdateDetailPanel(questVm);
         }
@@ -323,8 +318,61 @@ namespace TarkovHelper.Pages
         }
 
         /// <summary>
-        /// Reset every filter-bar control to its default (the faction toggle is a profile
-        /// setting, not a filter default, so it stays). Only invoked from BtnShowInList —
+        /// The list ApplyFilters last assigned to LstQuests.ItemsSource, or null before
+        /// the first ApplyFilters — the single place the filtered list is read back
+        /// from the control.
+        /// </summary>
+        private List<QuestViewModel>? CurrentFilteredList => LstQuests.ItemsSource as List<QuestViewModel>;
+
+        /// <summary>
+        /// Whether the quest is in the currently filtered list — the one authoritative
+        /// visibility probe behind the selection, notice, and navigation decisions.
+        /// </summary>
+        private bool IsVisibleUnderCurrentFilters(QuestViewModel? vm)
+            => vm != null && CurrentFilteredList?.Contains(vm) == true;
+
+        /// <summary>
+        /// Detaches LstQuests_SelectionChanged for the duration of a programmatic list
+        /// mutation (ItemsSource swap, selection rewrite) and reattaches on dispose, so
+        /// SelectionChanged keeps meaning "the user picked a row" and the reattach
+        /// cannot be forgotten at a call site.
+        /// </summary>
+        private SelectionChangedSuppression SuppressSelectionChanged() => new(this);
+
+        private readonly struct SelectionChangedSuppression : IDisposable
+        {
+            private readonly QuestListPage _page;
+
+            public SelectionChangedSuppression(QuestListPage page)
+            {
+                _page = page;
+                page.LstQuests.SelectionChanged -= page.LstQuests_SelectionChanged;
+            }
+
+            public void Dispose()
+                => _page.LstQuests.SelectionChanged += _page.LstQuests_SelectionChanged;
+        }
+
+        /// <summary>
+        /// Scrolls the list to the quest after the virtualizing panel has had a layout
+        /// pass over the current ItemsSource. A synchronous ScrollIntoView right after
+        /// an ItemsSource swap can silently fail to scroll because the item containers
+        /// are not generated yet, so the scroll is deferred to DispatcherPriority.Loaded
+        /// with an explicit UpdateLayout first (the guard the pre-refactor code used).
+        /// </summary>
+        private void ScrollQuestIntoView(QuestViewModel questVm)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                LstQuests.UpdateLayout();
+                LstQuests.ScrollIntoView(questVm);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// Sets every filter-bar control to its most-permissive value — note status
+        /// becomes "All", not the page's initial "Active" default (the faction toggle is
+        /// a profile setting, not a filter, so it stays). Only invoked from BtnShowInList —
         /// navigation itself never resets filters.
         /// </summary>
         private void ResetFilters()
@@ -563,19 +611,14 @@ namespace TarkovHelper.Pages
                 .OrderBy(vm => _unlockRank.TryGetValue(vm.Task.NormalizedName ?? string.Empty, out var r) ? r : int.MaxValue)
                 .ToList();
 
-            // Swap ItemsSource with SelectionChanged detached: the swap always clears the
-            // ListBox selection, and routing that non-user event around the handler keeps
-            // SelectionChanged meaning "the user picked a row". ReconcileDetailSelection
-            // then restores the selection/notice state explicitly.
-            LstQuests.SelectionChanged -= LstQuests_SelectionChanged;
-            try
+            // Swap ItemsSource with SelectionChanged suppressed: the swap always clears
+            // the ListBox selection, and routing that non-user event around the handler
+            // keeps SelectionChanged meaning "the user picked a row".
+            // ReconcileDetailSelection then restores the selection/notice state explicitly.
+            using (SuppressSelectionChanged())
             {
                 LstQuests.ItemsSource = filtered;
-                ReconcileDetailSelection(filtered);
-            }
-            finally
-            {
-                LstQuests.SelectionChanged += LstQuests_SelectionChanged;
+                ReconcileDetailSelection();
             }
 
             // Update statistics
@@ -660,25 +703,43 @@ namespace TarkovHelper.Pages
 
         private void LstQuests_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            // Programmatic mutations run with this handler suppressed (see
+            // SuppressSelectionChanged), so a null selection here is the user explicitly
+            // deselecting (Ctrl+Click on the selected row) — collapse the panel instead
+            // of letting UpdateDetailPanel's fallback resurrect the deselected quest.
+            if (LstQuests.SelectedItem == null)
+            {
+                ClearDetailPanel();
+                return;
+            }
             UpdateDetailPanel();
         }
 
         /// <summary>
         /// After the filtered list changes, re-point the list selection at the quest the
         /// detail panel is showing (when it is still visible) and keep the hidden-by-filters
-        /// notice truthful (when it is not). Runs with LstQuests.SelectionChanged detached
-        /// (see ApplyFilters), so restoring the selection does not re-render the panel.
+        /// notice truthful (when it is not). A shown quest that no longer exists in the
+        /// loaded data (e.g. dropped by a DB reload) collapses the panel instead of
+        /// leaving it stale. Runs with LstQuests.SelectionChanged suppressed (see
+        /// ApplyFilters), so restoring the selection does not re-render the panel.
         /// </summary>
-        private void ReconcileDetailSelection(List<QuestViewModel> filtered)
+        private void ReconcileDetailSelection()
         {
-            var detailVm = FindQuestViewModel(_currentDetailTask?.NormalizedName);
-            if (detailVm == null)
+            if (_currentDetailTask == null)
             {
                 UpdateFilteredOutNotice(null);
                 return;
             }
 
-            LstQuests.SelectedItem = filtered.Contains(detailVm) ? detailVm : null;
+            var detailVm = FindQuestViewModel(_currentDetailTask.NormalizedName);
+            if (detailVm == null)
+            {
+                // The shown quest vanished from the loaded data — nothing to keep showing.
+                ClearDetailPanel();
+                return;
+            }
+
+            LstQuests.SelectedItem = IsVisibleUnderCurrentFilters(detailVm) ? detailVm : null;
             UpdateFilteredOutNotice(detailVm);
         }
 
@@ -690,8 +751,8 @@ namespace TarkovHelper.Pages
         private void UpdateFilteredOutNotice(QuestViewModel? shownVm)
         {
             var hidden = shownVm != null
-                && LstQuests.ItemsSource is List<QuestViewModel> filtered
-                && !filtered.Contains(shownVm);
+                && CurrentFilteredList != null
+                && !IsVisibleUnderCurrentFilters(shownVm);
 
             if (hidden)
             {
@@ -716,24 +777,43 @@ namespace TarkovHelper.Pages
             // quest can legitimately stay hidden — then the notice stays up, truthfully.
             if (LstQuests.SelectedItem is QuestViewModel vm)
             {
-                LstQuests.ScrollIntoView(vm);
+                ScrollQuestIntoView(vm);
             }
+        }
+
+        /// <summary>
+        /// The quest the detail panel is showing/acting on: the list selection when
+        /// present, otherwise the quest the panel keeps showing while the filters hide
+        /// it (SelectedItem is null in that state — see SelectQuestInternal and
+        /// ReconcileDetailSelection).
+        /// </summary>
+        private QuestViewModel? ShownQuestViewModel()
+            => LstQuests.SelectedItem as QuestViewModel
+               ?? FindQuestViewModel(_currentDetailTask?.NormalizedName);
+
+        /// <summary>
+        /// Returns the detail panel to the empty "select a quest" state and forgets the
+        /// shown quest, so refresh paths cannot resurrect it through
+        /// <see cref="ShownQuestViewModel"/>.
+        /// </summary>
+        private void ClearDetailPanel()
+        {
+            _currentDetailTask = null;
+            DetailPanel.Visibility = Visibility.Collapsed;
+            TxtSelectQuest.Visibility = Visibility.Visible;
+            UpdateFilteredOutNotice(null);
         }
 
         private void UpdateDetailPanel(QuestViewModel? overrideVm = null)
         {
-            var selectedVm = overrideVm
-                ?? LstQuests.SelectedItem as QuestViewModel
-                // Refresh paths (progress/language/DB events) call this with no selection
-                // while filters hide the shown quest — keep showing it rather than
-                // collapsing the panel (see ReconcileDetailSelection).
-                ?? FindQuestViewModel(_currentDetailTask?.NormalizedName);
+            // Refresh paths (progress/language/DB events) call this with no selection
+            // while filters hide the shown quest — ShownQuestViewModel keeps showing it
+            // rather than collapsing the panel (see ReconcileDetailSelection).
+            var selectedVm = overrideVm ?? ShownQuestViewModel();
 
             if (selectedVm == null)
             {
-                DetailPanel.Visibility = Visibility.Collapsed;
-                TxtSelectQuest.Visibility = Visibility.Visible;
-                UpdateFilteredOutNotice(null);
+                ClearDetailPanel();
                 return;
             }
 
@@ -1004,7 +1084,10 @@ namespace TarkovHelper.Pages
 
         private void BtnWiki_Click(object sender, RoutedEventArgs e)
         {
-            var selectedVm = LstQuests.SelectedItem as QuestViewModel;
+            // ShownQuestViewModel, not SelectedItem: while the filters hide the shown
+            // quest, the selection is intentionally null but the panel (and its buttons)
+            // still shows the quest — the button must act on it.
+            var selectedVm = ShownQuestViewModel();
             if (selectedVm?.Task.Name == null) return;
 
             var wikiPageName = NormalizedNameGenerator.GetWikiPageName(selectedVm.Task.Name);
@@ -1028,7 +1111,8 @@ namespace TarkovHelper.Pages
 
         private void BtnComplete_Click(object sender, RoutedEventArgs e)
         {
-            var selectedVm = LstQuests.SelectedItem as QuestViewModel;
+            // ShownQuestViewModel, not SelectedItem — see BtnWiki_Click.
+            var selectedVm = ShownQuestViewModel();
             if (selectedVm != null)
             {
                 _progressService.CompleteQuest(selectedVm.Task, true);
@@ -1037,7 +1121,8 @@ namespace TarkovHelper.Pages
 
         private void BtnReset_Click(object sender, RoutedEventArgs e)
         {
-            var selectedVm = LstQuests.SelectedItem as QuestViewModel;
+            // ShownQuestViewModel, not SelectedItem — see BtnWiki_Click.
+            var selectedVm = ShownQuestViewModel();
             if (selectedVm != null)
             {
                 _progressService.ResetQuest(selectedVm.Task);
