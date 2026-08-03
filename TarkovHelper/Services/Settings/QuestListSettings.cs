@@ -72,6 +72,10 @@ public class QuestListSettings
         }
         set
         {
+            // EnsureLoaded before the change check: an unloaded cache is null, and
+            // `null != value` is always true, so an unguarded setter would write the
+            // session default over a stored value it never read. Same in every setter.
+            EnsureLoaded();
             if (_kappaOnly != value)
             {
                 _kappaOnly = value;
@@ -89,6 +93,7 @@ public class QuestListSettings
         }
         set
         {
+            EnsureLoaded();
             if (_itemRequired != value)
             {
                 _itemRequired = value;
@@ -107,6 +112,7 @@ public class QuestListSettings
         }
         set
         {
+            EnsureLoaded();
             if (_trader != value)
             {
                 _trader = value;
@@ -125,6 +131,7 @@ public class QuestListSettings
         }
         set
         {
+            EnsureLoaded();
             if (_map != value)
             {
                 _map = value;
@@ -143,6 +150,7 @@ public class QuestListSettings
         }
         set
         {
+            EnsureLoaded();
             if (_statusTag != value)
             {
                 _statusTag = value;
@@ -160,6 +168,7 @@ public class QuestListSettings
         }
         set
         {
+            EnsureLoaded();
             var clampedValue = Math.Clamp(value, MinDetailPanelWidth, MaxDetailPanelWidth);
             if (Math.Abs((_detailPanelWidth ?? DefaultDetailPanelWidth) - clampedValue) > 1)
             {
@@ -178,11 +187,66 @@ public class QuestListSettings
         }
         set
         {
+            EnsureLoaded();
             if (_recommendationsExpanded != value)
             {
                 _recommendationsExpanded = value;
                 SaveSetting(KeyRecommendationsExpanded, value.ToString());
             }
+        }
+    }
+
+    /// <summary>
+    /// Persists the whole filter-bar snapshot in ONE connection/transaction (the
+    /// <see cref="UserDataDbService.SetSettings"/> batch path <c>MapSettings.SaveLastView</c>
+    /// uses): these five values change together — a reset changes all of them — and a
+    /// failure partway through five separate writes would restore a filter combination
+    /// the user never had. Unchanged values are omitted, so the common case writes nothing.
+    /// </summary>
+    public void SaveFilterSnapshot(
+        bool kappaOnly, bool itemRequired, string trader, string map, string statusTag)
+    {
+        EnsureLoaded();
+
+        var changes = new List<KeyValuePair<string, string>>();
+
+        if (_kappaOnly != kappaOnly)
+        {
+            _kappaOnly = kappaOnly;
+            changes.Add(new(KeyKappaOnly, kappaOnly.ToString()));
+        }
+        if (_itemRequired != itemRequired)
+        {
+            _itemRequired = itemRequired;
+            changes.Add(new(KeyItemRequired, itemRequired.ToString()));
+        }
+        if (_trader != trader)
+        {
+            _trader = trader;
+            changes.Add(new(KeyTrader, trader ?? ""));
+        }
+        if (_map != map)
+        {
+            _map = map;
+            changes.Add(new(KeyMap, map ?? ""));
+        }
+        // StatusTag's getter substitutes DefaultStatusTag for an empty cache, so compare
+        // against the same substituted value or an empty stored tag would look "changed".
+        if (StatusTag != statusTag)
+        {
+            _statusTag = statusTag;
+            changes.Add(new(KeyStatusTag, statusTag ?? DefaultStatusTag));
+        }
+
+        if (changes.Count == 0) return;
+
+        try
+        {
+            _userDataDb.SetSettings(changes);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Filter snapshot save failed ({changes.Count} keys): {ex.Message}");
         }
     }
 
@@ -201,14 +265,19 @@ public class QuestListSettings
         }
         catch (Exception ex)
         {
-            _log.Error($"Save failed: {ex.Message}");
+            _log.Error($"Save failed: key={key}, error={ex.Message}");
         }
     }
 
+    /// <summary>
+    /// Reads every persisted value into the cache. The loaded flag is set only AFTER a
+    /// successful read: a throwing read (locked user_data.db, DB not initialized yet)
+    /// must leave the cache retryable, because a latched "loaded" flag over an empty
+    /// cache makes every getter return defaults for the rest of the session — and the
+    /// next save would then write those defaults over the user's stored values.
+    /// </summary>
     private void LoadSettings()
     {
-        _settingsLoaded = true;
-
         try
         {
             if (bool.TryParse(_userDataDb.GetSetting(KeyKappaOnly), out var kappaOnly))
@@ -226,6 +295,8 @@ public class QuestListSettings
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyRecommendationsExpanded), out var recommendationsExpanded))
                 _recommendationsExpanded = recommendationsExpanded;
+
+            _settingsLoaded = true;
         }
         catch (Exception ex)
         {

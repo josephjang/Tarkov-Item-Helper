@@ -102,3 +102,13 @@ full localization pass — new strings never add to the hardcoded-English debt.
 - A persisted trader/map value can vanish after a database update; the filter
   falls back to "All" silently. Accepted: the alternative (an error state for a
   stale dropdown value) is heavier than the harm.
+
+## Appended: scope of the trader/map fallback (2026-08-04)
+
+Recorded after a deep review of the implementing commit. The accepted risk above covers
+only a trader or map that genuinely no longer exists in the new database. As first
+shipped it was wider than intended: *every* database refresh dropped the selection, so a
+trader that still existed also fell back to "All" mid-session — and, once the filter bar
+became persistent, that widened value was written over the saved one. That was a defect,
+not this accepted risk, and it is fixed (see the sibling spec). The silent fallback stands
+as accepted only for values that really are gone.

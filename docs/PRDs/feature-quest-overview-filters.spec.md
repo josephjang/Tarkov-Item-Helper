@@ -139,3 +139,71 @@ The helper now waits for the list to reach the expected filtered count
 - The `GetListItemCount` harness helper counts realized ListItem peers only —
   exact for the small counts (0/1) the tests assert, not for virtualized
   hundreds; documented on the helper.
+
+## Appended: deep-review findings (2026-08-04)
+
+Appended after a full-diff deep review of the commit above. Corrections to
+already-written claims are recorded here rather than edited in place.
+
+**Correction to "Persistence is gated on `_isDataLoaded`".** The mechanism named in
+Technical Decisions is wrong, though the gate itself is right and stays. `ProfileService`'s
+startup auto-switch cannot reach this page: `ProfileService.InitializeAsync()` is awaited
+in `MainWindow` (`MainWindow.xaml.cs:179`) and `QuestListPage` is only constructed later
+(`MainWindow.xaml.cs:501`), so nothing is subscribed when that raise happens. The
+reachable raisers of `PlayerFactionChanged` during the `QuestListPage_Loaded` await window
+are `ProfileService.SetActiveGameMode` — from the raid-log auto-detect
+(`ProfileService.OnRaidEvent`) or the PVP/PVE buttons — and any other write to
+`SettingsService.PlayerFaction`. Anyone re-deriving the race from the original wording
+would conclude it is impossible and delete the gate.
+
+**Repopulation no longer drops (or persists over) the trader/map selection.**
+`PopulateTraderFilter`/`PopulateMapFilter` rebuild their items by removing the selected
+one, which reset the combo to `SelectedIndex = -1` and raised `SelectionChanged`; with
+persistence added, the next `ApplyFilters` wrote the widened `""` to `questList.trader` /
+`questList.map`. A DB auto-update or `ReloadDataAsync` therefore destroyed a *still-valid*
+saved filter — which the PRD's accepted risk does not cover, that one being about a value
+that genuinely no longer exists. Both methods now capture the selected tag, rebuild inside
+a `SuppressFilterHandlers()` scope, and re-select it, falling back to "All" only when the
+value really is gone.
+
+**`SelectComboByTag` takes an explicit fallback tag.** Its index-0 fallback was the
+permissive entry for trader/map but *not* for status, whose index 0 is "Active" ("All" is
+index 1) — an unknown persisted tag silently applied the narrowest filter and then
+persisted it. `ResetFilters` also selects by tag now instead of by index.
+
+**Settings load is retryable, and saves are one transaction.** `LoadSettings` set
+`_settingsLoaded` before its `try`, so one failed read latched defaults for the session and
+the next save wrote them over the stored values; the flag is now set only after a
+successful read, and the setters `EnsureLoaded()` before their change check (an unloaded
+cache is null, and `null != value` is always true). `SaveFilterSnapshot` replaces five
+per-key writes with the batched `UserDataDbService.SetSettings` transaction that
+`MapSettings.SaveLastView` already uses.
+
+**Other corrections.** The debounced search is now *flushed* rather than cancelled on
+`Unloaded` and before `SelectQuestInternal`'s visibility probe (a cancelled tick left the
+list disagreeing with the search box permanently, because `Loaded` early-returns once
+`_isDataLoaded`). The empty state requires `_allQuestViewModels.Count > 0`, so a load
+failure no longer blames the user's filters. `CountByStatusTag` evaluates the
+status-independent criteria once per quest instead of once per quest per tag.
+`ApplyFilters` no longer calls `GetStatistics()` (a full status re-derivation) for a total
+it already has. The detail column publishes the settings clamp as its own
+`Min/MaxWidth` and is capped to the current window (`QuestListLayout.ClampDetailPanelWidth`)
+so a width saved on a wide monitor cannot push the splitter off a narrow one.
+
+**Splitter width is now unit-tested after all.** The "Not automated" note above stands for
+the *drag gesture*, but the save/restore rule it guarded is no longer untested: the width
+decision moved to the pure `QuestListLayout.ClampDetailPanelWidth`, covered by
+`QuestListLayoutTests`.
+
+### Risk accepted, not fixed: persistence still rides the render pass
+
+`SaveFilterSettings` is still called from `ApplyFilters`, so any event-driven apply
+(progress change, language change, DB refresh, `RefreshDisplay` from MainWindow) rewrites
+the filter snapshot even though the user changed nothing. With the two clobbering paths
+above closed, what remains is write frequency and the design smell — a save means "the
+list rendered", not "the user chose a filter". Moving the save to the user-intent handlers
+(`Filter_Changed`, the `Cmb*_SelectionChanged` trio, the debounce tick, and the two reset
+paths) would retire the `_isDataLoaded` gate entirely and make "the store mirrors the
+user's choice" true by construction. It is deliberately NOT done here: this spec's
+Non-Goals rule out re-architecting `ApplyFilters`, so the call is the author's. Reviewers
+of a future change in this area should treat the gate as load-bearing until then.

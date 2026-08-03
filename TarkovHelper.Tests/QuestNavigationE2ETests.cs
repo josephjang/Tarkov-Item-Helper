@@ -195,8 +195,13 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         app.WaitForElementVisibility("BtnShowInList", visible: true);
 
         // Clearing the search alone does not reveal the prerequisite (it is Active,
-        // the filter still says Locked) — the notice must stay truthful.
+        // the filter still says Locked) — the notice must stay truthful. Wait for the
+        // debounced clear to actually apply first: the list was narrowed to one row by
+        // the search, so it widening past one row is the signal. Without the wait both
+        // assertions below hold before the clear lands and could never fail.
         app.SetTextBoxValue("TxtSearch", "");
+        WaitUntil(() => app.GetListItemCount("LstQuests") > 1,
+            "the cleared search to widen the quest list");
         Assert.Equal("Locked", app.WaitForComboSelection("CmbStatus"));
         app.WaitForElementVisibility("BtnShowInList", visible: true);
 
@@ -290,9 +295,15 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
             return false;
         }, "a clickable recommendation row naming a known quest");
 
-        // Make the list show nothing, so the recommended quest is filtered out.
+        // Make the list show nothing, so the recommended quest is filtered out. The
+        // search is debounced, so wait for the zero-result state (its Reset button is
+        // the probe) before clicking: a click that beats the debounce would take
+        // SelectQuestInternal's *visible* branch against the still-unfiltered list, and
+        // the assertions below would still pass once the tick landed — silently
+        // exercising the opposite path from the one this test names.
         const string noMatchSearch = "e2e-no-such-quest";
         app.SetTextBoxValue("TxtSearch", noMatchSearch);
+        app.WaitForElementVisibility("BtnResetFilters", visible: true);
 
         app.ClickElement(target!);
 

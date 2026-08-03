@@ -38,18 +38,32 @@ namespace TarkovHelper.Pages
         private static readonly TimeSpan SearchDebounceInterval = TimeSpan.FromMilliseconds(250);
 
         /// <summary>
+        /// The quest list column's MinWidth, mirroring QuestListPage.xaml's first
+        /// ColumnDefinition — the space the detail panel must leave for the list.
+        /// </summary>
+        private const double QuestListMinWidth = 300;
+
+        /// <summary>The Tag of CmbTrader's "All Traders" entry (QuestListPage.xaml).</summary>
+        private const string AllTradersTag = "";
+        /// <summary>The Tag of CmbMap's "All Maps" entry (QuestListPage.xaml).</summary>
+        private const string AllMapsTag = "";
+
+        /// <summary>
         /// The status chips on the statistics bar in display order, with the status tag
         /// each one filters to (the same Tag values CmbStatus uses) and its label. The
         /// labels mirror the hardcoded-English status combo items — localizing one
-        /// without the other would make the bar disagree with the combo.
+        /// without the other would make the bar disagree with the combo. Built once:
+        /// the chips are page fields, so the array never needs rebuilding.
         /// </summary>
-        private (Button Chip, string Tag, string Label)[] StatusChips => new[]
+        private (Button Chip, string Tag, string Label)[]? _statusChips;
+
+        private (Button Chip, string Tag, string Label)[] StatusChips => _statusChips ??= new[]
         {
-            (ChipActive, "Active", "Active"),
-            (ChipLocked, "Locked", "Locked"),
-            (ChipDone, "Done", "Done"),
-            (ChipFailed, "Failed", "Failed"),
-            (ChipUnavailable, "Unavailable", "N/A"),
+            (ChipActive, QuestStatusTags.Active, "Active"),
+            (ChipLocked, QuestStatusTags.Locked, "Locked"),
+            (ChipDone, QuestStatusTags.Done, "Done"),
+            (ChipFailed, QuestStatusTags.Failed, "Failed"),
+            (ChipUnavailable, QuestStatusTags.Unavailable, "N/A"),
         };
 
         // Status brushes
@@ -67,6 +81,7 @@ namespace TarkovHelper.Pages
 
             Loaded += QuestListPage_Loaded;
             Unloaded += QuestListPage_Unloaded;
+            SizeChanged += QuestListPage_SizeChanged;
         }
 
         /// <summary>
@@ -102,9 +117,26 @@ namespace TarkovHelper.Pages
         private void QuestListPage_Unloaded(object sender, RoutedEventArgs e)
         {
             _isUnloaded = true;
-            _searchDebounceTimer?.Stop();
+            // FLUSH the pending debounced search rather than cancelling it. The page
+            // keeps its control state across a tab switch but Loaded early-returns once
+            // _isDataLoaded, so a discarded tick would leave the list filtered by the
+            // PREVIOUS search text while TxtSearch shows the new one — permanently, and
+            // with SelectQuestInternal's visibility probe reading that stale list.
+            FlushPendingSearch();
             // Unsubscribe from events to prevent memory leaks
             UnsubscribeServiceEvents();
+        }
+
+        /// <summary>
+        /// Applies a debounced search that has not ticked yet, so the list always agrees
+        /// with the search box. No-op when nothing is pending.
+        /// </summary>
+        private void FlushPendingSearch()
+        {
+            if (_searchDebounceTimer?.IsEnabled == true)
+            {
+                ApplyFilters(); // stops the timer itself
+            }
         }
 
         private async void QuestListPage_Loaded(object sender, RoutedEventArgs e)
@@ -219,28 +251,29 @@ namespace TarkovHelper.Pages
         {
             Dispatcher.Invoke(() =>
             {
-                // Update radio button selection to match the new faction. Restore the
-                // PREVIOUS _isInitializing instead of forcing false: this event can
-                // fire before Loaded finishes (profile auto-switch at startup), and
-                // forcing false there would arm every filter handler mid-initialization.
-                var wasInitializing = _isInitializing;
-                _isInitializing = true;
-                if (e == "bear")
+                // Update radio button selection to match the new faction with the filter
+                // handlers suppressed. The scope RESTORES the previous _isInitializing
+                // rather than forcing false: this event can fire before Loaded finishes
+                // (a game-mode switch during the Loaded await), and forcing false there
+                // would arm every filter handler mid-initialization.
+                using (SuppressFilterHandlers())
                 {
-                    RbBear.IsChecked = true;
-                    RbUsec.IsChecked = false;
+                    if (e == "bear")
+                    {
+                        RbBear.IsChecked = true;
+                        RbUsec.IsChecked = false;
+                    }
+                    else if (e == "usec")
+                    {
+                        RbUsec.IsChecked = true;
+                        RbBear.IsChecked = false;
+                    }
+                    else
+                    {
+                        RbBear.IsChecked = false;
+                        RbUsec.IsChecked = false;
+                    }
                 }
-                else if (e == "usec")
-                {
-                    RbUsec.IsChecked = true;
-                    RbBear.IsChecked = false;
-                }
-                else
-                {
-                    RbBear.IsChecked = false;
-                    RbUsec.IsChecked = false;
-                }
-                _isInitializing = wasInitializing;
 
                 RefreshAllForStateChange();
             });
@@ -308,6 +341,10 @@ namespace TarkovHelper.Pages
             // Re-establish the precondition the pre-refactor code created by always
             // applying filters itself: the visibility probe below needs ItemsSource to
             // be the filtered list, or every target would silently count as hidden.
+            // A search typed within the debounce window must land first, or the probe
+            // would judge visibility against the pre-keystroke list and select a row the
+            // pending filter is about to hide.
+            FlushPendingSearch();
             if (CurrentFilteredList == null) ApplyFilters();
 
             if (IsVisibleUnderCurrentFilters(questVm))
@@ -385,6 +422,31 @@ namespace TarkovHelper.Pages
         }
 
         /// <summary>
+        /// Suppresses the filter-bar handlers (they all early-return on
+        /// <c>_isInitializing</c>) for the duration of a programmatic filter mutation,
+        /// restoring the PREVIOUS value on dispose rather than forcing false. Restoring
+        /// is what makes the scope nest safely: a reset or a faction sync that runs while
+        /// Loaded is still initializing must not arm the handlers early, which would let
+        /// the not-yet-restored filter bar fire a cascade of ApplyFilters passes.
+        /// </summary>
+        private FilterHandlerSuppression SuppressFilterHandlers() => new(this);
+
+        private readonly struct FilterHandlerSuppression : IDisposable
+        {
+            private readonly QuestListPage _page;
+            private readonly bool _wasInitializing;
+
+            public FilterHandlerSuppression(QuestListPage page)
+            {
+                _page = page;
+                _wasInitializing = page._isInitializing;
+                page._isInitializing = true;
+            }
+
+            public void Dispose() => _page._isInitializing = _wasInitializing;
+        }
+
+        /// <summary>
         /// Scrolls the list to the quest after the virtualizing panel has had a layout
         /// pass over the current ItemsSource. A synchronous ScrollIntoView right after
         /// an ItemsSource swap can silently fail to scroll because the item containers
@@ -403,26 +465,26 @@ namespace TarkovHelper.Pages
         /// <summary>
         /// Sets every filter-bar control to its most-permissive value — note status
         /// becomes "All", not the page's initial "Active" default (the faction toggle is
-        /// a profile setting, not a filter, so it stays). Only invoked from BtnShowInList —
-        /// navigation itself never resets filters.
+        /// a profile setting, not a filter, so it stays). Invoked from BtnShowInList and
+        /// from the empty state's BtnResetFilters — navigation itself never resets
+        /// filters. Selection goes through tags, never item indices, so reordering the
+        /// XAML ComboBoxItems cannot silently change what "reset" means.
         /// </summary>
         private void ResetFilters()
         {
-            _isInitializing = true;
+            using (SuppressFilterHandlers())
+            {
+                SelectComboByTag(CmbStatus, QuestStatusTags.All, QuestStatusTags.All);
 
-            // Reset status filter to "All"
-            CmbStatus.SelectedIndex = 1; // "All"
+                // Clear search text
+                TxtSearch.Text = "";
 
-            // Clear search text
-            TxtSearch.Text = "";
-
-            // Reset other filters
-            ChkKappaOnly.IsChecked = false;
-            ChkItemRequired.IsChecked = false;
-            CmbTrader.SelectedIndex = 0; // "All Traders"
-            CmbMap.SelectedIndex = 0; // "All Maps"
-
-            _isInitializing = false;
+                // Reset other filters
+                ChkKappaOnly.IsChecked = false;
+                ChkItemRequired.IsChecked = false;
+                SelectComboByTag(CmbTrader, AllTradersTag, AllTradersTag);
+                SelectComboByTag(CmbMap, AllMapsTag, AllMapsTag);
+            }
         }
 
         private void LoadQuests()
@@ -585,33 +647,62 @@ namespace TarkovHelper.Pages
             }
         }
 
+        /// <summary>
+        /// The Tag of the combo's current selection, or the empty string when nothing is
+        /// selected — the same reading ApplyFilters takes, so a repopulation can restore
+        /// exactly what the filter snapshot would have recorded.
+        /// </summary>
+        private static string SelectedTag(ComboBox combo)
+            => (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty;
+
         private void PopulateTraderFilter()
         {
-            // Clear existing items except "All Traders"
-            while (CmbTrader.Items.Count > 1)
-            {
-                CmbTrader.Items.RemoveAt(1);
-            }
+            // Removing the selected item resets the ComboBox to SelectedIndex -1 and
+            // raises SelectionChanged, so a bare repopulation (DB refresh, ReloadDataAsync)
+            // would both widen the live filter to "All Traders" AND — via the
+            // SelectionChanged → ApplyFilters → persist chain — overwrite the stored
+            // trader with "". Capture the tag, rebuild with the handlers suppressed, and
+            // re-select it; a trader that genuinely disappeared falls back to "All".
+            var selectedTrader = SelectedTag(CmbTrader);
 
-            foreach (var trader in _traders)
+            using (SuppressFilterHandlers())
             {
-                CmbTrader.Items.Add(new ComboBoxItem { Content = trader, Tag = trader });
+                // Clear existing items except "All Traders"
+                while (CmbTrader.Items.Count > 1)
+                {
+                    CmbTrader.Items.RemoveAt(1);
+                }
+
+                foreach (var trader in _traders)
+                {
+                    CmbTrader.Items.Add(new ComboBoxItem { Content = trader, Tag = trader });
+                }
+
+                SelectComboByTag(CmbTrader, selectedTrader, AllTradersTag);
             }
         }
 
         private void PopulateMapFilter()
         {
-            // Clear existing items except "All Maps"
-            while (CmbMap.Items.Count > 1)
-            {
-                CmbMap.Items.RemoveAt(1);
-            }
+            // Selection preserved across the rebuild — see PopulateTraderFilter.
+            var selectedMap = SelectedTag(CmbMap);
 
-            foreach (var mapNormalized in _maps)
+            using (SuppressFilterHandlers())
             {
-                // Get localized map name
-                var mapName = GetLocalizedMapName(mapNormalized);
-                CmbMap.Items.Add(new ComboBoxItem { Content = mapName, Tag = mapNormalized });
+                // Clear existing items except "All Maps"
+                while (CmbMap.Items.Count > 1)
+                {
+                    CmbMap.Items.RemoveAt(1);
+                }
+
+                foreach (var mapNormalized in _maps)
+                {
+                    // Get localized map name
+                    var mapName = GetLocalizedMapName(mapNormalized);
+                    CmbMap.Items.Add(new ComboBoxItem { Content = mapName, Tag = mapNormalized });
+                }
+
+                SelectComboByTag(CmbMap, selectedMap, AllMapsTag);
             }
         }
 
@@ -633,9 +724,10 @@ namespace TarkovHelper.Pages
                 SearchText: TxtSearch.Text ?? string.Empty,
                 KappaOnly: ChkKappaOnly.IsChecked == true,
                 ItemRequired: ChkItemRequired.IsChecked == true,
-                Trader: (CmbTrader.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty,
-                Map: (CmbMap.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? string.Empty,
-                StatusTag: (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Active",
+                Trader: SelectedTag(CmbTrader),
+                Map: SelectedTag(CmbMap),
+                StatusTag: (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+                           ?? QuestListSettings.DefaultStatusTag,
                 Faction: RbBear.IsChecked == true ? "bear" : (RbUsec.IsChecked == true ? "usec" : null));
 
             var filtered = _allQuestViewModels
@@ -655,19 +747,23 @@ namespace TarkovHelper.Pages
                 ReconcileDetailSelection();
             }
 
-            UpdateEmptyState(isEmpty: filtered.Count == 0);
+            // Only the filters can be blamed when there ARE quests to filter. With no
+            // quests loaded (a pre-Loaded refresh, a failed or empty data load) the list
+            // is empty for a reason no reset can fix, and MainWindow owns that message.
+            UpdateEmptyState(isEmpty: filtered.Count == 0 && _allQuestViewModels.Count > 0);
 
-            // Persist the filter-bar snapshot (setters no-op on unchanged values).
-            // Gated on _isDataLoaded, NOT _isInitializing: service events (e.g. the
-            // profile auto-switch raising PlayerFactionChanged) can trigger an
-            // ApplyFilters before Loaded has restored the saved state, and that early
-            // pass must not overwrite the store with the XAML defaults.
+            // Persist the filter-bar snapshot (one transaction; unchanged values are
+            // skipped). Gated on _isDataLoaded, NOT _isInitializing: service events (a
+            // game-mode switch raising PlayerFactionChanged, a progress or DB refresh)
+            // can trigger an ApplyFilters before Loaded has restored the saved state,
+            // and that early pass must not overwrite the store with the XAML defaults.
             if (_isDataLoaded) SaveFilterSettings(criteria);
 
-            // Update statistics — the per-status counts live on the clickable chips
-            var stats = _progressService.GetStatistics();
+            // Update statistics — the per-status counts live on the clickable chips.
+            // The total is the loaded quest count itself; QuestProgressService's
+            // GetStatistics() would re-derive every quest's status just to return it.
             var playerLevel = SettingsService.Instance.PlayerLevel;
-            TxtStats.Text = $"Lv.{playerLevel} | {filtered.Count}/{stats.Total}";
+            TxtStats.Text = $"Lv.{playerLevel} | {filtered.Count}/{_allQuestViewModels.Count}";
             UpdateStatusChips(criteria);
 
             // Update Kappa progress gauge
@@ -700,45 +796,60 @@ namespace TarkovHelper.Pages
         /// <summary>
         /// Restores the persisted filter-bar state (search text is deliberately
         /// transient and never restored). A persisted trader/map that no longer exists
-        /// after a DB update falls back to the combo's "All" entry. Runs under
-        /// _isInitializing from Loaded — the first ApplyFilters happens after.
+        /// after a DB update falls back to that combo's "All" entry, and an unknown
+        /// status tag (a value written by another build, a hand-edited row) falls back
+        /// to "All" — the permissive end, never the narrower "Active" default. Runs
+        /// under _isInitializing from Loaded — the first ApplyFilters happens after.
         /// </summary>
         private void RestoreFilterSettings()
         {
             var settings = QuestListSettings.Instance;
             ChkKappaOnly.IsChecked = settings.KappaOnly;
             ChkItemRequired.IsChecked = settings.ItemRequired;
-            SelectComboByTag(CmbTrader, settings.Trader);
-            SelectComboByTag(CmbMap, settings.Map);
-            SelectComboByTag(CmbStatus, settings.StatusTag);
-        }
-
-        /// <summary>Persists the filter-bar snapshot ApplyFilters just used.</summary>
-        private static void SaveFilterSettings(QuestFilterCriteria criteria)
-        {
-            var settings = QuestListSettings.Instance;
-            settings.KappaOnly = criteria.KappaOnly;
-            settings.ItemRequired = criteria.ItemRequired;
-            settings.Trader = criteria.Trader;
-            settings.Map = criteria.Map;
-            settings.StatusTag = criteria.StatusTag;
+            SelectComboByTag(CmbTrader, settings.Trader, AllTradersTag);
+            SelectComboByTag(CmbMap, settings.Map, AllMapsTag);
+            SelectComboByTag(CmbStatus, settings.StatusTag, QuestStatusTags.All);
         }
 
         /// <summary>
-        /// Selects the ComboBoxItem whose Tag equals <paramref name="tag"/>, falling
-        /// back to index 0 (the "All"/default entry) when no item carries the tag.
+        /// Persists the filter-bar snapshot ApplyFilters just used, as one transactional
+        /// write — these five values change together (a reset changes all of them), and
+        /// five independent writes could leave a half-reset combination behind.
         /// </summary>
-        private static void SelectComboByTag(ComboBox combo, string tag)
+        private static void SaveFilterSettings(QuestFilterCriteria criteria)
+            => QuestListSettings.Instance.SaveFilterSnapshot(
+                criteria.KappaOnly, criteria.ItemRequired,
+                criteria.Trader, criteria.Map, criteria.StatusTag);
+
+        /// <summary>
+        /// Selects the ComboBoxItem whose Tag equals <paramref name="tag"/>. When no item
+        /// carries that tag (a persisted value from another build, a trader/map dropped by
+        /// a database update) it falls back to <paramref name="fallbackTag"/> — passed
+        /// explicitly because index 0 is NOT the permissive entry in every combo:
+        /// CmbStatus's index 0 is "Active" and "All" sits at index 1, so an index-based
+        /// fallback would silently NARROW the list instead of widening it.
+        /// </summary>
+        private static void SelectComboByTag(ComboBox combo, string tag, string fallbackTag)
+        {
+            if (TrySelectComboByTag(combo, tag)) return;
+            if (TrySelectComboByTag(combo, fallbackTag)) return;
+
+            // Neither tag exists (an empty or renamed combo) — leave the first entry
+            // selected rather than an unselected, blank-rendering combo.
+            combo.SelectedIndex = 0;
+        }
+
+        private static bool TrySelectComboByTag(ComboBox combo, string tag)
         {
             foreach (var item in combo.Items.OfType<ComboBoxItem>())
             {
                 if (string.Equals(item.Tag?.ToString() ?? string.Empty, tag, StringComparison.Ordinal))
                 {
                     combo.SelectedItem = item;
-                    return;
+                    return true;
                 }
             }
-            combo.SelectedIndex = 0;
+            return false;
         }
 
         /// <summary>
@@ -773,15 +884,55 @@ namespace TarkovHelper.Pages
         {
             if (sender is not Button chip || chip.Tag is not string tag) return;
 
-            var currentTag = (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString();
-            var targetTag = string.Equals(currentTag, tag, StringComparison.Ordinal) ? "All" : tag;
-            SelectComboByTag(CmbStatus, targetTag);
+            var currentTag = SelectedTag(CmbStatus);
+            var targetTag = string.Equals(currentTag, tag, StringComparison.Ordinal)
+                ? QuestStatusTags.All
+                : tag;
+            SelectComboByTag(CmbStatus, targetTag, QuestStatusTags.All);
         }
 
-        /// <summary>Applies the persisted detail-panel width (saved on splitter drag end).</summary>
+        /// <summary>
+        /// Applies the persisted detail-panel width (saved on splitter drag end) and
+        /// publishes the settings clamp to the column itself, so the width the user can
+        /// drag to is exactly the width that persists — without MaxWidth the splitter
+        /// accepts 1400px, the setter silently stores 800, and the panel "forgets" the
+        /// size at the next launch.
+        /// </summary>
         private void RestoreDetailPanelWidth()
         {
-            DetailColumn.Width = new GridLength(QuestListSettings.Instance.DetailPanelWidth);
+            DetailColumn.MinWidth = QuestListSettings.MinDetailPanelWidth;
+            DetailColumn.MaxWidth = QuestListSettings.MaxDetailPanelWidth;
+            ApplyDetailPanelWidth(QuestListSettings.Instance.DetailPanelWidth);
+        }
+
+        /// <summary>
+        /// Sets the detail column to the bounded, page-fitting width
+        /// (<see cref="QuestListLayout.ClampDetailPanelWidth"/> holds the rule and its
+        /// tests). The persisted value is never rewritten here, so a panel narrowed to
+        /// fit a small window returns to its full width on a wide one.
+        /// </summary>
+        private void ApplyDetailPanelWidth(double width)
+        {
+            DetailColumn.Width = new GridLength(QuestListLayout.ClampDetailPanelWidth(
+                requestedWidth: width,
+                pageWidth: ActualWidth,
+                listMinWidth: QuestListMinWidth,
+                splitterWidth: DetailSplitter.Width,
+                minWidth: QuestListSettings.MinDetailPanelWidth,
+                maxWidth: QuestListSettings.MaxDetailPanelWidth));
+        }
+
+        /// <summary>
+        /// Re-fits the detail panel when the window width changes (monitor change,
+        /// un-maximize, restore), so a saved width can never clip the quest list out of
+        /// view. Re-applies the PERSISTED width rather than the column's current one:
+        /// feeding back the already-capped value would ratchet the panel narrower and
+        /// never let it grow back when the window widens again.
+        /// </summary>
+        private void QuestListPage_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (!e.WidthChanged || !_isDataLoaded) return;
+            ApplyDetailPanelWidth(QuestListSettings.Instance.DetailPanelWidth);
         }
 
         private void DetailSplitter_DragCompleted(object sender,

@@ -27,6 +27,30 @@ namespace TarkovHelper.Pages
     }
 
     /// <summary>
+    /// The status filter tags: the ComboBoxItem Tag values of QuestListPage's CmbStatus,
+    /// which double as the status-chip tags and as the persisted questList.statusTag
+    /// value. QuestListPage.xaml declares the same strings on its CmbStatus items — these
+    /// constants are the single source for every C# path that names one, so a rename only
+    /// has to be mirrored in that one XAML block.
+    /// </summary>
+    public static class QuestStatusTags
+    {
+        public const string All = "All";
+        public const string Active = "Active";
+        public const string Locked = "Locked";
+        public const string Done = "Done";
+        public const string Failed = "Failed";
+        public const string Unavailable = "Unavailable";
+
+        /// <summary>
+        /// The tags that get a status chip, in display order. "All" has no chip
+        /// deliberately (see feature-quest-overview-filters.md) — the combo offers it,
+        /// and re-clicking the selected chip returns to it.
+        /// </summary>
+        public static readonly string[] ChipTags = { Active, Locked, Done, Failed, Unavailable };
+    }
+
+    /// <summary>
     /// The quest-list filter predicate, extracted from QuestListPage.ApplyFilters so
     /// the filter semantics are unit-testable without WPF (see QuestListFilterTests).
     /// Keep this the single place that decides whether a quest is visible under the
@@ -35,6 +59,16 @@ namespace TarkovHelper.Pages
     public static class QuestListFilter
     {
         public static bool Matches(QuestViewModel vm, QuestFilterCriteria criteria)
+            => MatchesNonStatusCriteria(vm, criteria)
+               && MatchesStatusTag(vm, criteria.StatusTag)
+               && MatchesFaction(vm, criteria.Faction, criteria.StatusTag);
+
+        /// <summary>
+        /// Every criterion except status and faction — the expensive half (it lowercases
+        /// the three name fields per quest). Split out so <see cref="CountByStatusTag"/>
+        /// can evaluate it once per quest instead of once per quest per status tag.
+        /// </summary>
+        private static bool MatchesNonStatusCriteria(QuestViewModel vm, QuestFilterCriteria criteria)
         {
             // Search filter (multi-language)
             var searchText = criteria.NormalizedSearchText;
@@ -68,40 +102,44 @@ namespace TarkovHelper.Pages
                     return false;
             }
 
-            // Status filter
-            if (criteria.StatusTag != "All")
-            {
-                // "Locked" filter now includes both Locked and LevelLocked
-                if (criteria.StatusTag == "Locked")
-                {
-                    if (vm.Status != QuestStatus.Locked && vm.Status != QuestStatus.LevelLocked)
-                        return false;
-                }
-                else
-                {
-                    // An unrecognized tag (a future ComboBox typo, or a new caller of
-                    // this public predicate) matches nothing rather than throwing
-                    // ArgumentException on the UI thread mid-ApplyFilters.
-                    if (!Enum.TryParse<QuestStatus>(criteria.StatusTag, out var statusFilter))
-                        return false;
-                    if (vm.Status != statusFilter)
-                        return false;
-                }
-            }
-
-            // Faction filter - hide quests for the other faction
-            // Exception: Show in Unavailable filter so users can see faction-restricted quests
-            if (!string.IsNullOrEmpty(criteria.Faction) && !string.IsNullOrEmpty(vm.Task.Faction))
-            {
-                if (!string.Equals(vm.Task.Faction, criteria.Faction, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Only hide if NOT viewing Unavailable status
-                    if (criteria.StatusTag != "Unavailable")
-                        return false;
-                }
-            }
-
             return true;
+        }
+
+        /// <summary>The status half of the predicate, for one status tag.</summary>
+        private static bool MatchesStatusTag(QuestViewModel vm, string statusTag)
+        {
+            if (statusTag == QuestStatusTags.All)
+                return true;
+
+            // "Locked" filter now includes both Locked and LevelLocked
+            if (statusTag == QuestStatusTags.Locked)
+                return vm.Status == QuestStatus.Locked || vm.Status == QuestStatus.LevelLocked;
+
+            // An unrecognized tag (a future ComboBox typo, or a new caller of this
+            // public predicate) matches nothing rather than throwing ArgumentException
+            // on the UI thread mid-ApplyFilters.
+            if (!Enum.TryParse<QuestStatus>(statusTag, out var statusFilter))
+                return false;
+
+            return vm.Status == statusFilter;
+        }
+
+        /// <summary>
+        /// The faction half: hide quests for the other faction, EXCEPT under the
+        /// "Unavailable" status filter, so faction-restricted quests stay discoverable.
+        /// Depends on the status tag, hence the explicit parameter rather than the
+        /// criteria's own tag — the chip counts evaluate it per candidate tag.
+        /// </summary>
+        private static bool MatchesFaction(QuestViewModel vm, string? faction, string statusTag)
+        {
+            if (string.IsNullOrEmpty(faction) || string.IsNullOrEmpty(vm.Task.Faction))
+                return true;
+
+            if (string.Equals(vm.Task.Faction, faction, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Only hide if NOT viewing Unavailable status
+            return statusTag == QuestStatusTags.Unavailable;
         }
 
         /// <summary>
@@ -112,6 +150,12 @@ namespace TarkovHelper.Pages
         /// the faction/Unavailable exception in <see cref="Matches"/>, an other-faction
         /// quest is counted only under the "Unavailable" tag, so chip counts need not
         /// sum to any fixed total.
+        ///
+        /// One pass: the status-independent criteria are evaluated once per quest and
+        /// only the two cheap status/faction checks run per tag, so the shared work
+        /// (three ToLowerInvariant calls per quest under a search) is not repeated once
+        /// per chip. <see cref="Matches"/> composes the same three parts, so the counts
+        /// are by construction what the list would show.
         /// </summary>
         public static Dictionary<string, int> CountByStatusTag(
             IReadOnlyList<QuestViewModel> viewModels,
@@ -120,12 +164,20 @@ namespace TarkovHelper.Pages
         {
             var counts = new Dictionary<string, int>(statusTags.Count, StringComparer.Ordinal);
             foreach (var tag in statusTags)
+                counts[tag] = 0;
+
+            foreach (var vm in viewModels)
             {
-                // `with` copies the record (including the already-normalized search
-                // text backing field) and replaces only the status tag.
-                var tagCriteria = criteria with { StatusTag = tag };
-                counts[tag] = viewModels.Count(vm => Matches(vm, tagCriteria));
+                if (!MatchesNonStatusCriteria(vm, criteria))
+                    continue;
+
+                foreach (var tag in statusTags)
+                {
+                    if (MatchesStatusTag(vm, tag) && MatchesFaction(vm, criteria.Faction, tag))
+                        counts[tag]++;
+                }
             }
+
             return counts;
         }
     }
