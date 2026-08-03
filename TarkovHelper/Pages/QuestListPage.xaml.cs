@@ -4,8 +4,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
+using TarkovHelper.Services.Settings;
 using System.Linq;
 
 namespace TarkovHelper.Pages
@@ -30,6 +32,25 @@ namespace TarkovHelper.Pages
         private List<GuideImage>? _pendingGuideImages = null;
         private bool _guideImagesLoaded = false;
         private TarkovTask? _currentDetailTask = null;
+        // Debounces per-keystroke search filtering (see TxtSearch_TextChanged); any
+        // explicit ApplyFilters cancels a pending tick.
+        private DispatcherTimer? _searchDebounceTimer;
+        private static readonly TimeSpan SearchDebounceInterval = TimeSpan.FromMilliseconds(250);
+
+        /// <summary>
+        /// The status chips on the statistics bar in display order, with the status tag
+        /// each one filters to (the same Tag values CmbStatus uses) and its label. The
+        /// labels mirror the hardcoded-English status combo items — localizing one
+        /// without the other would make the bar disagree with the combo.
+        /// </summary>
+        private (Button Chip, string Tag, string Label)[] StatusChips => new[]
+        {
+            (ChipActive, "Active", "Active"),
+            (ChipLocked, "Locked", "Locked"),
+            (ChipDone, "Done", "Done"),
+            (ChipFailed, "Failed", "Failed"),
+            (ChipUnavailable, "Unavailable", "N/A"),
+        };
 
         // Status brushes
         private static readonly Brush LockedBrush = new SolidColorBrush(Color.FromRgb(102, 102, 102));
@@ -81,6 +102,7 @@ namespace TarkovHelper.Pages
         private void QuestListPage_Unloaded(object sender, RoutedEventArgs e)
         {
             _isUnloaded = true;
+            _searchDebounceTimer?.Stop();
             // Unsubscribe from events to prevent memory leaks
             UnsubscribeServiceEvents();
         }
@@ -104,6 +126,11 @@ namespace TarkovHelper.Pages
             PopulateTraderFilter();
             PopulateMapFilter();
             LoadFactionSelection();
+            // First QuestListSettings access happens here (never in a constructor):
+            // by Loaded the databases are initialized, so the settings actually load
+            // instead of silently falling back to defaults.
+            RestoreFilterSettings();
+            RestoreDetailPanelWidth();
             _isInitializing = false;
             _isDataLoaded = true;
             ApplyFilters();
@@ -192,7 +219,11 @@ namespace TarkovHelper.Pages
         {
             Dispatcher.Invoke(() =>
             {
-                // Update radio button selection to match the new faction
+                // Update radio button selection to match the new faction. Restore the
+                // PREVIOUS _isInitializing instead of forcing false: this event can
+                // fire before Loaded finishes (profile auto-switch at startup), and
+                // forcing false there would arm every filter handler mid-initialization.
+                var wasInitializing = _isInitializing;
                 _isInitializing = true;
                 if (e == "bear")
                 {
@@ -209,7 +240,7 @@ namespace TarkovHelper.Pages
                     RbBear.IsChecked = false;
                     RbUsec.IsChecked = false;
                 }
-                _isInitializing = false;
+                _isInitializing = wasInitializing;
 
                 RefreshAllForStateChange();
             });
@@ -595,6 +626,9 @@ namespace TarkovHelper.Pages
 
         private void ApplyFilters()
         {
+            // An explicit apply supersedes any pending debounced search apply.
+            _searchDebounceTimer?.Stop();
+
             var criteria = new QuestFilterCriteria(
                 SearchText: TxtSearch.Text ?? string.Empty,
                 KappaOnly: ChkKappaOnly.IsChecked == true,
@@ -621,15 +655,139 @@ namespace TarkovHelper.Pages
                 ReconcileDetailSelection();
             }
 
-            // Update statistics
+            UpdateEmptyState(isEmpty: filtered.Count == 0);
+
+            // Persist the filter-bar snapshot (setters no-op on unchanged values).
+            // Gated on _isDataLoaded, NOT _isInitializing: service events (e.g. the
+            // profile auto-switch raising PlayerFactionChanged) can trigger an
+            // ApplyFilters before Loaded has restored the saved state, and that early
+            // pass must not overwrite the store with the XAML defaults.
+            if (_isDataLoaded) SaveFilterSettings(criteria);
+
+            // Update statistics — the per-status counts live on the clickable chips
             var stats = _progressService.GetStatistics();
             var playerLevel = SettingsService.Instance.PlayerLevel;
-            var lockedTotal = stats.Locked + stats.LevelLocked;
-            TxtStats.Text = $"Lv.{playerLevel} | Showing {filtered.Count} of {stats.Total} quests | " +
-                           $"Active: {stats.Active} | Locked: {lockedTotal} | Done: {stats.Done} | Failed: {stats.Failed} | N/A: {stats.Unavailable}";
+            TxtStats.Text = $"Lv.{playerLevel} | {filtered.Count}/{stats.Total}";
+            UpdateStatusChips(criteria);
 
             // Update Kappa progress gauge
             UpdateKappaGauge();
+        }
+
+        /// <summary>
+        /// Shows the zero-results empty state over the quest list (with the explicit
+        /// reset button as the exit), or hides it. Texts are re-applied on every show
+        /// so a language change is picked up by the next ApplyFilters.
+        /// </summary>
+        private void UpdateEmptyState(bool isEmpty)
+        {
+            if (isEmpty)
+            {
+                TxtEmptyStateTitle.Text = _loc.QuestListEmptyTitle;
+                TxtEmptyStateHint.Text = _loc.QuestListEmptyHint;
+                BtnResetFilters.Content = _loc.ResetFiltersButton;
+            }
+            PnlEmptyState.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>The empty state's escape hatch — the same reset BtnShowInList uses.</summary>
+        private void BtnResetFilters_Click(object sender, RoutedEventArgs e)
+        {
+            ResetFilters();
+            ApplyFilters();
+        }
+
+        /// <summary>
+        /// Restores the persisted filter-bar state (search text is deliberately
+        /// transient and never restored). A persisted trader/map that no longer exists
+        /// after a DB update falls back to the combo's "All" entry. Runs under
+        /// _isInitializing from Loaded — the first ApplyFilters happens after.
+        /// </summary>
+        private void RestoreFilterSettings()
+        {
+            var settings = QuestListSettings.Instance;
+            ChkKappaOnly.IsChecked = settings.KappaOnly;
+            ChkItemRequired.IsChecked = settings.ItemRequired;
+            SelectComboByTag(CmbTrader, settings.Trader);
+            SelectComboByTag(CmbMap, settings.Map);
+            SelectComboByTag(CmbStatus, settings.StatusTag);
+        }
+
+        /// <summary>Persists the filter-bar snapshot ApplyFilters just used.</summary>
+        private static void SaveFilterSettings(QuestFilterCriteria criteria)
+        {
+            var settings = QuestListSettings.Instance;
+            settings.KappaOnly = criteria.KappaOnly;
+            settings.ItemRequired = criteria.ItemRequired;
+            settings.Trader = criteria.Trader;
+            settings.Map = criteria.Map;
+            settings.StatusTag = criteria.StatusTag;
+        }
+
+        /// <summary>
+        /// Selects the ComboBoxItem whose Tag equals <paramref name="tag"/>, falling
+        /// back to index 0 (the "All"/default entry) when no item carries the tag.
+        /// </summary>
+        private static void SelectComboByTag(ComboBox combo, string tag)
+        {
+            foreach (var item in combo.Items.OfType<ComboBoxItem>())
+            {
+                if (string.Equals(item.Tag?.ToString() ?? string.Empty, tag, StringComparison.Ordinal))
+                {
+                    combo.SelectedItem = item;
+                    return;
+                }
+            }
+            combo.SelectedIndex = 0;
+        }
+
+        /// <summary>
+        /// Renders the status chips for the current filter snapshot: per-tag counts via
+        /// <see cref="QuestListFilter.CountByStatusTag"/> (what the list would show if
+        /// that chip were clicked), selected-chip visuals from criteria.StatusTag.
+        /// </summary>
+        private void UpdateStatusChips(QuestFilterCriteria criteria)
+        {
+            var chips = StatusChips;
+            var counts = QuestListFilter.CountByStatusTag(
+                _allQuestViewModels, criteria, chips.Select(c => c.Tag).ToList());
+
+            foreach (var (chip, tag, label) in chips)
+            {
+                chip.Content = $"{label} {counts[tag]}";
+                var isSelected = string.Equals(criteria.StatusTag, tag, StringComparison.Ordinal);
+                chip.Background = isSelected
+                    ? (Brush)FindResource("BackgroundLightBrush")
+                    : Brushes.Transparent;
+                chip.BorderBrush = isSelected ? chip.Foreground : (Brush)FindResource("BorderBrush");
+                chip.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal;
+            }
+        }
+
+        /// <summary>
+        /// Chip click = status filter: applies the chip's status, or returns to "All"
+        /// when the chip is already the active filter. Routed through CmbStatus (whose
+        /// SelectionChanged applies the filters) so the combo and chips cannot disagree.
+        /// </summary>
+        private void StatusChip_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button chip || chip.Tag is not string tag) return;
+
+            var currentTag = (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+            var targetTag = string.Equals(currentTag, tag, StringComparison.Ordinal) ? "All" : tag;
+            SelectComboByTag(CmbStatus, targetTag);
+        }
+
+        /// <summary>Applies the persisted detail-panel width (saved on splitter drag end).</summary>
+        private void RestoreDetailPanelWidth()
+        {
+            DetailColumn.Width = new GridLength(QuestListSettings.Instance.DetailPanelWidth);
+        }
+
+        private void DetailSplitter_DragCompleted(object sender,
+            System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            QuestListSettings.Instance.DetailPanelWidth = DetailColumn.ActualWidth;
         }
 
         private void UpdateKappaGauge()
@@ -653,7 +811,17 @@ namespace TarkovHelper.Pages
 
         private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (!_isInitializing) ApplyFilters();
+            if (_isInitializing) return;
+
+            // Debounce: a synchronous refilter per keystroke re-runs the full LINQ
+            // pass, the chip counts, and the kappa gauge for every character typed.
+            if (_searchDebounceTimer == null)
+            {
+                _searchDebounceTimer = new DispatcherTimer { Interval = SearchDebounceInterval };
+                _searchDebounceTimer.Tick += (_, _) => ApplyFilters(); // ApplyFilters stops the timer
+            }
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Start();
         }
 
         private void Filter_Changed(object sender, RoutedEventArgs e)

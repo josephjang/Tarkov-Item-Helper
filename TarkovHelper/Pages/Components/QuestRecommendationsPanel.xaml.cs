@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
+using TarkovHelper.Services.Settings;
 
 namespace TarkovHelper.Pages.Components
 {
@@ -31,9 +32,30 @@ namespace TarkovHelper.Pages.Components
         /// </summary>
         public Func<TarkovTask, (string DisplayName, string Subtitle, bool ShowSubtitle)>? GetLocalizedNames { get; set; }
 
+        /// <summary>
+        /// Whether the persisted expander state has been applied. Restoration waits for
+        /// Loaded (not the constructor) because QuestListSettings' first access reads
+        /// user_data.db, which is not initialized when MainWindow constructs its pages.
+        /// </summary>
+        private bool _expanderStateRestored;
+
         public QuestRecommendationsPanel()
         {
             InitializeComponent();
+            Loaded += QuestRecommendationsPanel_Loaded;
+        }
+
+        private void QuestRecommendationsPanel_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_expanderStateRestored) return;
+            _expanderStateRestored = true;
+
+            RecommendationsExpander.IsExpanded = QuestListSettings.Instance.RecommendationsExpanded;
+            // Save handlers attach only after the restore so it cannot re-save itself.
+            RecommendationsExpander.Expanded +=
+                (_, _) => QuestListSettings.Instance.RecommendationsExpanded = true;
+            RecommendationsExpander.Collapsed +=
+                (_, _) => QuestListSettings.Instance.RecommendationsExpanded = false;
         }
 
         /// <summary>

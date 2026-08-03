@@ -189,6 +189,103 @@ public sealed class QuestListFilterTests
         Assert.Equal(string.Empty, AllCriteria().NormalizedSearchText);
     }
 
+    private static readonly string[] AllStatusTags =
+        { "Active", "Locked", "Done", "Failed", "Unavailable" };
+
+    [Fact]
+    public void Chip_counts_group_by_tag_with_locked_including_levellocked()
+    {
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "A1", status: QuestStatus.Active),
+            Vm(name: "A2", status: QuestStatus.Active),
+            Vm(name: "L1", status: QuestStatus.Locked),
+            Vm(name: "LL1", status: QuestStatus.LevelLocked),
+            Vm(name: "D1", status: QuestStatus.Done),
+            Vm(name: "F1", status: QuestStatus.Failed),
+            Vm(name: "U1", status: QuestStatus.Unavailable),
+        };
+
+        var counts = QuestListFilter.CountByStatusTag(
+            vms, AllCriteria(statusTag: "Active"), AllStatusTags);
+
+        Assert.Equal(2, counts["Active"]);
+        Assert.Equal(2, counts["Locked"]); // Locked + LevelLocked share the chip
+        Assert.Equal(1, counts["Done"]);
+        Assert.Equal(1, counts["Failed"]);
+        Assert.Equal(1, counts["Unavailable"]);
+    }
+
+    [Fact]
+    public void Chip_counts_respect_the_non_status_criteria()
+    {
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "Debut", status: QuestStatus.Active, trader: "Prapor"),
+            Vm(name: "Shortage", status: QuestStatus.Active, trader: "Therapist"),
+            Vm(name: "Checking", status: QuestStatus.Done, trader: "Prapor"),
+        };
+
+        var counts = QuestListFilter.CountByStatusTag(
+            vms, AllCriteria(trader: "Prapor"), AllStatusTags);
+
+        Assert.Equal(1, counts["Active"]); // Shortage belongs to Therapist
+        Assert.Equal(1, counts["Done"]);
+        Assert.Equal(0, counts["Locked"]);
+    }
+
+    [Fact]
+    public void Chip_counts_do_not_depend_on_the_currently_selected_status_tag()
+    {
+        // Each count substitutes its own tag, so the selected status must not leak in —
+        // the chips are click-previews, identical whichever chip is active now.
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "A", status: QuestStatus.Active),
+            Vm(name: "D", status: QuestStatus.Done),
+        };
+
+        var fromActive = QuestListFilter.CountByStatusTag(vms, AllCriteria(statusTag: "Active"), AllStatusTags);
+        var fromAll = QuestListFilter.CountByStatusTag(vms, AllCriteria(statusTag: "All"), AllStatusTags);
+
+        Assert.Equal(fromActive, fromAll);
+    }
+
+    [Fact]
+    public void Chip_counts_count_other_faction_quests_only_under_unavailable()
+    {
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "Own", status: QuestStatus.Active, faction: "bear"),
+            Vm(name: "Other", status: QuestStatus.Unavailable, faction: "usec"),
+        };
+
+        var counts = QuestListFilter.CountByStatusTag(
+            vms, AllCriteria(faction: "bear"), AllStatusTags);
+
+        Assert.Equal(1, counts["Active"]);
+        Assert.Equal(1, counts["Unavailable"]); // the other-faction quest surfaces only here
+        Assert.Equal(0, counts["Done"]);
+    }
+
+    [Fact]
+    public void Chip_counts_preserve_the_normalized_search_text_through_the_with_copy()
+    {
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "Debut", status: QuestStatus.Active),
+            Vm(name: "Shortage", status: QuestStatus.Active),
+        };
+
+        // "  DeBuT  " matches only after the one-time trim+lowercase, proving the
+        // `with`-copied per-tag criteria kept the precomputed NormalizedSearchText.
+        var counts = QuestListFilter.CountByStatusTag(
+            vms, AllCriteria(searchText: "  DeBuT  ", statusTag: "All"), AllStatusTags);
+
+        Assert.Equal(1, counts["Active"]);
+        Assert.Equal(0, counts["Done"]);
+    }
+
     [Fact]
     public void Criteria_combine_with_and_semantics()
     {

@@ -272,6 +272,25 @@ internal sealed class AppDriver : IDisposable
         => ((ExpandCollapsePattern)WaitForElement(automationId).GetCurrentPattern(ExpandCollapsePattern.Pattern))
             .Expand();
 
+    /// <summary>Toggles a CheckBox-like element (TogglePattern).</summary>
+    public void ToggleElement(string automationId)
+        => ((TogglePattern)WaitForElement(automationId).GetCurrentPattern(TogglePattern.Pattern)).Toggle();
+
+    /// <summary>Whether a CheckBox-like element is currently checked (TogglePattern).</summary>
+    public bool GetToggleState(string automationId)
+        => ((TogglePattern)WaitForElement(automationId).GetCurrentPattern(TogglePattern.Pattern))
+            .Current.ToggleState == ToggleState.On;
+
+    /// <summary>
+    /// The number of ListItem children the list exposes right now. Virtualizing lists
+    /// only expose realized containers, so treat the count as exact only for small
+    /// expected values (0 or 1 after a narrowing filter) — which is what callers use
+    /// it for: telling "filtered down to N" apart from "still showing the old list".
+    /// </summary>
+    public int GetListItemCount(string listAutomationId)
+        => WaitForElement(listAutomationId).FindAll(TreeScope.Children,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)).Count;
+
     /// <summary>Whether the list currently has a selected item (SelectionPattern).</summary>
     public bool ListHasSelection(string listAutomationId)
         => ((SelectionPattern)WaitForElement(listAutomationId).GetCurrentPattern(SelectionPattern.Pattern))
