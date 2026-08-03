@@ -277,13 +277,112 @@ public sealed class QuestListFilterTests
             Vm(name: "Shortage", status: QuestStatus.Active),
         };
 
-        // "  DeBuT  " matches only after the one-time trim+lowercase, proving the
-        // `with`-copied per-tag criteria kept the precomputed NormalizedSearchText.
+        // "  DeBuT  " matches only after the one-time trim+lowercase, so a per-tag
+        // criteria copy that lost the precomputed NormalizedSearchText would count both
+        // quests (empty search = no filter) instead of one.
         var counts = QuestListFilter.CountByStatusTag(
             vms, AllCriteria(searchText: "  DeBuT  ", statusTag: "All"), AllStatusTags);
 
         Assert.Equal(1, counts["Active"]);
         Assert.Equal(0, counts["Done"]);
+    }
+
+    [Fact]
+    public void With_copy_carries_the_precomputed_normalized_search_text()
+    {
+        var criteria = AllCriteria(searchText: "  DeBuT  ", statusTag: "All");
+
+        var copy = criteria with { StatusTag = "Done" };
+
+        // The record's copy constructor copies the backing field; the property
+        // initializer does NOT re-run. Asserted directly, because the count-based test
+        // above cannot tell "copied" from "recomputed from an unchanged SearchText".
+        Assert.Equal("debut", copy.NormalizedSearchText);
+        Assert.Equal(criteria.NormalizedSearchText, copy.NormalizedSearchText);
+    }
+
+    [Fact]
+    public void With_copy_of_SearchText_does_not_recompute_the_normalized_text()
+    {
+        var criteria = AllCriteria(searchText: "Debut");
+
+        var copy = criteria with { SearchText = "Shortage" };
+
+        // The hazard QuestFilterCriteria's doc comment warns about, pinned so a refactor
+        // to a computed property cannot silently change the contract CountByStatusTag
+        // depends on: SearchText moves, the normalized text does not follow it.
+        Assert.Equal("Shortage", copy.SearchText);
+        Assert.Equal("debut", copy.NormalizedSearchText);
+    }
+
+    [Fact]
+    public void Chip_counts_equal_the_per_tag_Matches_count_for_every_tag()
+    {
+        // The single-pass CountByStatusTag must stay exactly "what Matches would say if
+        // this tag were selected" — including the Locked+LevelLocked merge and the
+        // faction/Unavailable exception, which the one-pass form evaluates separately.
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "Debut", status: QuestStatus.Active, trader: "Prapor", faction: "bear"),
+            Vm(name: "Checking", status: QuestStatus.Active, trader: "Prapor"),
+            Vm(name: "Shortage", status: QuestStatus.LevelLocked, trader: "Therapist"),
+            Vm(name: "Sanitary", status: QuestStatus.Locked, trader: "Prapor"),
+            Vm(name: "Delivery", status: QuestStatus.Done, trader: "Prapor"),
+            Vm(name: "Bad Rep", status: QuestStatus.Failed, trader: "Prapor"),
+            Vm(name: "Usec Only", status: QuestStatus.Unavailable, trader: "Prapor", faction: "usec"),
+            Vm(name: "Bear Only", status: QuestStatus.Active, trader: "Prapor", faction: "usec"),
+        };
+        var criteria = AllCriteria(trader: "Prapor", faction: "bear", statusTag: "Active");
+
+        var counts = QuestListFilter.CountByStatusTag(vms, criteria, AllStatusTags);
+
+        foreach (var tag in AllStatusTags)
+        {
+            var expected = vms.Count(vm => QuestListFilter.Matches(vm, criteria with { StatusTag = tag }));
+            Assert.Equal(expected, counts[tag]);
+        }
+    }
+
+    [Fact]
+    public void Chip_counts_are_zero_for_every_tag_when_no_quests_are_loaded()
+    {
+        var counts = QuestListFilter.CountByStatusTag(
+            new List<QuestViewModel>(), AllCriteria(), AllStatusTags);
+
+        // Every requested tag gets a key even with nothing to count — UpdateStatusChips
+        // indexes counts[tag] for each chip and would throw on a missing key.
+        Assert.Equal(AllStatusTags.Length, counts.Count);
+        Assert.All(AllStatusTags, tag => Assert.Equal(0, counts[tag]));
+    }
+
+    [Fact]
+    public void Chip_counts_are_zero_for_an_unrecognized_status_tag()
+    {
+        var vms = new List<QuestViewModel> { Vm(status: QuestStatus.Active) };
+
+        var counts = QuestListFilter.CountByStatusTag(
+            vms, AllCriteria(), new[] { "Active", "NotAStatus" });
+
+        Assert.Equal(1, counts["Active"]);
+        Assert.Equal(0, counts["NotAStatus"]); // matches nothing rather than throwing
+    }
+
+    [Fact]
+    public void Chip_tags_cover_every_status_the_filter_understands_except_All()
+    {
+        // The chips are the only way to reach a status filter without the combo, so the
+        // shared tag table must stay in step with QuestStatus — a status added to the
+        // enum with no chip would be invisible on the bar.
+        var chipTags = QuestStatusTags.ChipTags;
+
+        Assert.DoesNotContain(QuestStatusTags.All, chipTags);
+        Assert.Equal(chipTags.Length, chipTags.Distinct().Count());
+        foreach (var status in Enum.GetValues<QuestStatus>())
+        {
+            // LevelLocked deliberately shares the Locked chip (see CountByStatusTag).
+            if (status == QuestStatus.LevelLocked) continue;
+            Assert.Contains(status.ToString(), chipTags);
+        }
     }
 
     [Fact]

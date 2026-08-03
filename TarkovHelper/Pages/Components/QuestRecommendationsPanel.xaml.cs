@@ -32,23 +32,22 @@ namespace TarkovHelper.Pages.Components
         /// </summary>
         public Func<TarkovTask, (string DisplayName, string Subtitle, bool ShowSubtitle)>? GetLocalizedNames { get; set; }
 
-        /// <summary>
-        /// Whether the persisted expander state has been applied. Restoration waits for
-        /// Loaded (not the constructor) because QuestListSettings' first access reads
-        /// user_data.db, which is not initialized when MainWindow constructs its pages.
-        /// </summary>
-        private bool _expanderStateRestored;
-
         public QuestRecommendationsPanel()
         {
             InitializeComponent();
             Loaded += QuestRecommendationsPanel_Loaded;
         }
 
+        /// <summary>
+        /// Restores the persisted expander state once. Restoration waits for Loaded (not
+        /// the constructor) because QuestListSettings' first access reads user_data.db,
+        /// which is not initialized when MainWindow constructs its pages. The handler
+        /// detaches itself instead of guarding on a flag, so the tab-bounce that
+        /// re-fires Loaded cannot re-run the restore or double-attach the save handlers.
+        /// </summary>
         private void QuestRecommendationsPanel_Loaded(object sender, RoutedEventArgs e)
         {
-            if (_expanderStateRestored) return;
-            _expanderStateRestored = true;
+            Loaded -= QuestRecommendationsPanel_Loaded;
 
             RecommendationsExpander.IsExpanded = QuestListSettings.Instance.RecommendationsExpanded;
             // Save handlers attach only after the restore so it cannot re-save itself.

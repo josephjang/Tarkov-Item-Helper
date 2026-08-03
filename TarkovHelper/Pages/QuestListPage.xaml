@@ -310,15 +310,19 @@
                     <Button x:Name="ChipActive" Style="{StaticResource StatusChipStyle}"
                             Foreground="#4CAF50" Tag="Active" Click="StatusChip_Click"/>
                     <!-- Neutral gray: the chip merges Locked + LevelLocked, so neither
-                         the gray Locked badge nor the orange Level badge color fits. -->
+                         the gray Locked badge nor the orange Level badge color fits.
+                         Darker than the N/A chip so the two greys stay distinguishable. -->
                     <Button x:Name="ChipLocked" Style="{StaticResource StatusChipStyle}"
-                            Foreground="#9E9E9E" Tag="Locked" Click="StatusChip_Click"/>
+                            Foreground="#757575" Tag="Locked" Click="StatusChip_Click"/>
                     <Button x:Name="ChipDone" Style="{StaticResource StatusChipStyle}"
                             Foreground="#2196F3" Tag="Done" Click="StatusChip_Click"/>
                     <Button x:Name="ChipFailed" Style="{StaticResource StatusChipStyle}"
                             Foreground="#F44336" Tag="Failed" Click="StatusChip_Click"/>
+                    <!-- #9E9E9E matches UnavailableBrush, the N/A badge color in the
+                         list rows (QuestListPage.xaml.cs) — the chip and the badge name
+                         the same status, so they must not drift apart. -->
                     <Button x:Name="ChipUnavailable" Style="{StaticResource StatusChipStyle}"
-                            Foreground="#757575" Tag="Unavailable" Click="StatusChip_Click"/>
+                            Foreground="#9E9E9E" Tag="Unavailable" Click="StatusChip_Click"/>
                 </StackPanel>
 
                 <!-- Kappa Progress Gauge -->
