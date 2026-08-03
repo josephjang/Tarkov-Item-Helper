@@ -211,32 +211,17 @@ public class QuestListSettings
         var changes = new List<KeyValuePair<string, string>>();
 
         if (_kappaOnly != kappaOnly)
-        {
-            _kappaOnly = kappaOnly;
             changes.Add(new(KeyKappaOnly, kappaOnly.ToString()));
-        }
         if (_itemRequired != itemRequired)
-        {
-            _itemRequired = itemRequired;
             changes.Add(new(KeyItemRequired, itemRequired.ToString()));
-        }
         if (_trader != trader)
-        {
-            _trader = trader;
             changes.Add(new(KeyTrader, trader ?? ""));
-        }
         if (_map != map)
-        {
-            _map = map;
             changes.Add(new(KeyMap, map ?? ""));
-        }
         // StatusTag's getter substitutes DefaultStatusTag for an empty cache, so compare
         // against the same substituted value or an empty stored tag would look "changed".
         if (StatusTag != statusTag)
-        {
-            _statusTag = statusTag;
             changes.Add(new(KeyStatusTag, statusTag ?? DefaultStatusTag));
-        }
 
         if (changes.Count == 0) return;
 
@@ -246,8 +231,19 @@ public class QuestListSettings
         }
         catch (Exception ex)
         {
+            // Cache deliberately NOT updated: leaving it at the stored values means the
+            // next ApplyFilters still sees a difference and retries the write, instead of
+            // a cache that reports success for the rest of the session while the store
+            // silently keeps the old filters.
             _log.Error($"Filter snapshot save failed ({changes.Count} keys): {ex.Message}");
+            return;
         }
+
+        _kappaOnly = kappaOnly;
+        _itemRequired = itemRequired;
+        _trader = trader;
+        _map = map;
+        _statusTag = statusTag;
     }
 
     #region Private Methods

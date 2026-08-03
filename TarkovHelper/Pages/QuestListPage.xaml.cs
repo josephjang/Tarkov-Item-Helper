@@ -146,6 +146,15 @@ namespace TarkovHelper.Pages
             {
                 _isUnloaded = false;
                 SubscribeServiceEvents();
+
+                // Every service event raised while the page sat unsubscribed was missed
+                // — including the log-sync quest completions that fire during a raid, the
+                // ones most likely to happen while the user is on another tab. Nothing
+                // else re-syncs on the way back (MainWindow only re-assigns Content), so
+                // without this the list, the chip counts and the persisted snapshot would
+                // all be derived from stale statuses until some later event happened to
+                // fire.
+                if (_isDataLoaded) RefreshAllForStateChange();
             }
 
             // Skip if already loaded (prevents re-initialization on tab switching)
@@ -882,6 +891,11 @@ namespace TarkovHelper.Pages
         /// </summary>
         private void StatusChip_Click(object sender, RoutedEventArgs e)
         {
+            // Ignore clicks that land before Loaded has restored the saved filters: the
+            // combo's SelectionChanged is still suppressed, so the click would move the
+            // combo without filtering or repainting the chips — and the restore would
+            // then discard it anyway.
+            if (!_isDataLoaded) return;
             if (sender is not Button chip || chip.Tag is not string tag) return;
 
             var currentTag = SelectedTag(CmbStatus);
