@@ -358,10 +358,38 @@ internal sealed class AppDriver : IDisposable
     /// </summary>
     public void ClickElement(AutomationElement element)
     {
-        Win32.SetForegroundWindow(_hwnd);
-        Thread.Sleep(150);
+        EnsureForeground();
         var point = element.GetClickablePoint(); // physical screen px (host is per-monitor-v2)
         Win32.ClickAt((int)point.X, (int)point.Y);
+        Thread.Sleep(150);
+    }
+
+    /// <summary>
+    /// Raises the app window and CONFIRMS it actually became foreground before any
+    /// synthetic click is injected.
+    ///
+    /// SetForegroundWindow returns without effect whenever another process owns the
+    /// foreground lock (a different app was just activated, an elevated window is on
+    /// top, some tray/monitor utilities hold it). Clicking anyway sends the click to
+    /// whatever is really under those screen coordinates — another application — which
+    /// both fails the test with a misleading "the UI never updated" timeout 30s later
+    /// AND injects a stray click into someone else's window. On a shared desktop that
+    /// can be a real, data-modifying click in another copy of this very app, so this
+    /// refuses to click rather than clicking blind.
+    /// </summary>
+    private void EnsureForeground(int timeoutSeconds = 10)
+    {
+        PollUntil(
+            () =>
+            {
+                if (Win32.GetForegroundWindow() == _hwnd) return true;
+                Win32.SetForegroundWindow(_hwnd);
+                return Win32.GetForegroundWindow() == _hwnd;
+            },
+            DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => "the app window could not be brought to the foreground, so no click was "
+                + "injected (another window owns the foreground lock — check for a topmost "
+                + "or elevated window on this desktop)");
         Thread.Sleep(150);
     }
 
@@ -374,8 +402,7 @@ internal sealed class AppDriver : IDisposable
     /// </summary>
     public void CtrlClickElement(AutomationElement element)
     {
-        Win32.SetForegroundWindow(_hwnd);
-        Thread.Sleep(150);
+        EnsureForeground();
         var rect = element.Current.BoundingRectangle; // physical screen px
         Win32.CtrlClickAt((int)(rect.Left + 15), (int)(rect.Top + rect.Height / 2));
         Thread.Sleep(150);
@@ -690,6 +717,7 @@ internal static class Win32
     [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extraInfo);
 
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extraInfo);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);

@@ -190,6 +190,18 @@ it already has. The detail column publishes the settings clamp as its own
 `Min/MaxWidth` and is capped to the current window (`QuestListLayout.ClampDetailPanelWidth`)
 so a width saved on a wide monitor cannot push the splitter off a narrow one.
 
+**E2E status at review time, and a harness guard.** 17 of 24 e2e tests pass; the 7
+failures are the whole of `QuestNavigationE2ETests` — the only file that drives a *real
+mouse* (`ClickElement`/`CtrlClickElement`/`ClickTextElementWithScroll`). Every
+UIA-pattern test passes, including the five in `QuestOverviewFiltersE2ETests`. The same
+two failures reproduce on the pre-review commit `d7e0c5e` with none of these changes
+present, so the cause is environmental: on a shared desktop `SetForegroundWindow` fails
+silently when another process owns the foreground lock, and the click then lands on
+whatever is actually on top. `ClickElement`/`CtrlClickElement` now confirm the window
+really became foreground and refuse to click otherwise — a blind click can otherwise
+reach another copy of this app and modify real quest progress. Re-run the file on a
+desktop with no competing foreground window to confirm the suite green.
+
 **Splitter width is now unit-tested after all.** The "Not automated" note above stands for
 the *drag gesture*, but the save/restore rule it guarded is no longer untested: the width
 decision moved to the pure `QuestListLayout.ClampDetailPanelWidth`, covered by
