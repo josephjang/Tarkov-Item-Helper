@@ -103,5 +103,30 @@ namespace TarkovHelper.Pages
 
             return true;
         }
+
+        /// <summary>
+        /// For each status tag, the number of quests that would be visible if the status
+        /// filter were set to that tag while every other criterion stays as-is — the
+        /// numbers on the quest page's status chips, which are click-previews by
+        /// definition (clicking a chip applies exactly the counted filter). Because of
+        /// the faction/Unavailable exception in <see cref="Matches"/>, an other-faction
+        /// quest is counted only under the "Unavailable" tag, so chip counts need not
+        /// sum to any fixed total.
+        /// </summary>
+        public static Dictionary<string, int> CountByStatusTag(
+            IReadOnlyList<QuestViewModel> viewModels,
+            QuestFilterCriteria criteria,
+            IReadOnlyList<string> statusTags)
+        {
+            var counts = new Dictionary<string, int>(statusTags.Count, StringComparer.Ordinal);
+            foreach (var tag in statusTags)
+            {
+                // `with` copies the record (including the already-normalized search
+                // text backing field) and replaces only the status tag.
+                var tagCriteria = criteria with { StatusTag = tag };
+                counts[tag] = viewModels.Count(vm => Matches(vm, tagCriteria));
+            }
+            return counts;
+        }
     }
 }

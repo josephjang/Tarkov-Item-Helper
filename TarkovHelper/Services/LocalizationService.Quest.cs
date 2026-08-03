@@ -165,6 +165,37 @@ public partial class LocalizationService
 
     #endregion
 
+    #region Quest List Page
+
+    /// <summary>
+    /// Empty-state title shown in the quest list when the current filters match zero
+    /// quests (see QuestListPage.ApplyFilters / PnlEmptyState).
+    /// </summary>
+    public string QuestListEmptyTitle => CurrentLanguage switch
+    {
+        AppLanguage.KO => "조건에 맞는 퀘스트가 없습니다",
+        AppLanguage.JA => "条件に一致するクエストがありません",
+        _ => "No quests match the current filters"
+    };
+
+    /// <summary>Empty-state hint line under <see cref="QuestListEmptyTitle"/>.</summary>
+    public string QuestListEmptyHint => CurrentLanguage switch
+    {
+        AppLanguage.KO => "검색어 또는 필터를 조정해 보세요",
+        AppLanguage.JA => "検索語またはフィルターを調整してください",
+        _ => "Adjust the search text or the filters above"
+    };
+
+    /// <summary>Empty-state button: resets every filter (QuestListPage.ResetFilters).</summary>
+    public string ResetFiltersButton => CurrentLanguage switch
+    {
+        AppLanguage.KO => "필터 초기화",
+        AppLanguage.JA => "フィルターをリセット",
+        _ => "Reset Filters"
+    };
+
+    #endregion
+
     #region Quest Recommendations
 
     public string RecommendedQuests => CurrentLanguage switch

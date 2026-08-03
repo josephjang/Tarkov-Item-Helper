@@ -99,6 +99,12 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         app.SelectTab("TabQuests", "LstQuests");
         app.SelectComboItemByName("CmbStatus", "Locked");
         app.SetTextBoxValue("TxtSearch", questName);
+        // The search filter is debounced (QuestListPage.TxtSearch_TextChanged), so wait
+        // for it to apply before touching row 0 — otherwise this could grab the first
+        // row of the still-unfiltered list. The query guarantees the name is a unique
+        // search substring, so exactly one row survives.
+        WaitUntil(() => app.GetListItemCount("LstQuests") == 1,
+            $"quest list to filter down to '{questName}'");
         app.SelectListItemAt("LstQuests", 0);
         WaitUntil(() => app.GetElementText("TxtDetailName") == questName,
             $"detail panel to show '{questName}'");

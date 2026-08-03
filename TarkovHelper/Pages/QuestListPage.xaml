@@ -26,6 +26,36 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
+        <!-- Status chip: a pill Button on the statistics bar acting as the status
+             filter (clicking applies that status; clicking the selected chip returns
+             to "All"). Background/BorderBrush/FontWeight of the selected chip are set
+             from code in UpdateStatusChips — the single place chip visuals derive
+             from the CmbStatus selection. -->
+        <Style x:Key="StatusChipStyle" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeXSmall}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ChipBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="10" Padding="10,3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ChipBorder" Property="Background"
+                                        Value="{StaticResource BackgroundLightBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Quest List Item Template -->
         <DataTemplate x:Key="QuestItemTemplate">
             <Border x:Name="ItemBorder" Padding="12,8" BorderThickness="0,0,0,1"
@@ -49,15 +79,17 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
 
-                    <!-- Quest Name -->
+                    <!-- Quest Name (tooltip carries the full text past the ellipsis) -->
                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{StaticResource TextPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis"/>
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding DisplayName}"/>
                         <TextBlock Text="{Binding SubtitleName}" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    Visibility="{Binding SubtitleVisibility}"
-                                   TextTrimming="CharacterEllipsis"/>
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding SubtitleName}"/>
                     </StackPanel>
 
                     <!-- Kappa Badge -->
@@ -260,6 +292,7 @@
         <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
@@ -268,8 +301,28 @@
                            Foreground="{StaticResource TextSecondaryBrush}"
                            VerticalAlignment="Center"/>
 
+                <!-- Clickable status-count chips: click applies that status filter,
+                     clicking the selected chip returns to "All". Counts are what the
+                     list would show under that status with all other filters as-is
+                     (QuestListFilter.CountByStatusTag). -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="12,0,8,0">
+                    <Button x:Name="ChipActive" Style="{StaticResource StatusChipStyle}"
+                            Foreground="#4CAF50" Tag="Active" Click="StatusChip_Click"/>
+                    <!-- Neutral gray: the chip merges Locked + LevelLocked, so neither
+                         the gray Locked badge nor the orange Level badge color fits. -->
+                    <Button x:Name="ChipLocked" Style="{StaticResource StatusChipStyle}"
+                            Foreground="#9E9E9E" Tag="Locked" Click="StatusChip_Click"/>
+                    <Button x:Name="ChipDone" Style="{StaticResource StatusChipStyle}"
+                            Foreground="#2196F3" Tag="Done" Click="StatusChip_Click"/>
+                    <Button x:Name="ChipFailed" Style="{StaticResource StatusChipStyle}"
+                            Foreground="#F44336" Tag="Failed" Click="StatusChip_Click"/>
+                    <Button x:Name="ChipUnavailable" Style="{StaticResource StatusChipStyle}"
+                            Foreground="#757575" Tag="Unavailable" Click="StatusChip_Click"/>
+                </StackPanel>
+
                 <!-- Kappa Progress Gauge -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="κ" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                Foreground="#9C27B0" VerticalAlignment="Center"
                                Margin="0,0,6,0"/>
@@ -294,26 +347,47 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="300"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="350" MinWidth="250"/>
+                <!-- Width restored from QuestListSettings.DetailPanelWidth in Loaded;
+                     saved on splitter DragCompleted. -->
+                <ColumnDefinition x:Name="DetailColumn" Width="350" MinWidth="250"/>
             </Grid.ColumnDefinitions>
 
             <!-- Quest List -->
             <Border Grid.Column="0" Background="{StaticResource BackgroundMediumBrush}"
                     CornerRadius="6">
-                <ListBox x:Name="LstQuests"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ItemTemplate="{StaticResource QuestItemTemplate}"
-                         ItemContainerStyle="{StaticResource QuestListBoxItem}"
-                         SelectionChanged="LstQuests_SelectionChanged"
-                         VirtualizingPanel.IsVirtualizing="True"
-                         VirtualizingPanel.VirtualizationMode="Recycling"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                <Grid>
+                    <ListBox x:Name="LstQuests"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemTemplate="{StaticResource QuestItemTemplate}"
+                             ItemContainerStyle="{StaticResource QuestListBoxItem}"
+                             SelectionChanged="LstQuests_SelectionChanged"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+
+                    <!-- Empty state: shown by ApplyFilters when zero quests match.
+                         Panels have no UIA peer, so e2e probes BtnResetFilters. -->
+                    <StackPanel x:Name="PnlEmptyState" Visibility="Collapsed"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtEmptyStateTitle"
+                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="TxtEmptyStateHint"
+                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center" Margin="0,4,0,12"/>
+                        <Button x:Name="BtnResetFilters" Padding="12,6"
+                                HorizontalAlignment="Center" Click="BtnResetFilters_Click"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- Splitter -->
-            <GridSplitter Grid.Column="1" Width="8" Background="Transparent"
-                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+            <GridSplitter x:Name="DetailSplitter" Grid.Column="1" Width="8" Background="Transparent"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          DragCompleted="DetailSplitter_DragCompleted"/>
 
             <!-- Detail Panel -->
             <Border Grid.Column="2" Background="{StaticResource BackgroundMediumBrush}"

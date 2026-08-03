@@ -1,0 +1,141 @@
+# Quest Overview & Filters — Technical Spec
+
+- **Created**: 2026-08-03
+
+> The sibling `feature-quest-overview-filters.md` holds the product decision.
+> Write this on the work's branch and merge it in the same PR as the work. Nothing
+> is kept current: fields are written once, discoveries are appended. A later
+> change that reverses a decision here appends `Superseded by <doc>` below this
+> line, in the PR that reverses it.
+
+## Summary
+
+A new `QuestListSettings` service (the `MapSettings` pattern over
+`UserDataDbService.GetSetting/SetSetting`) persists the Quest tab's UI state; the
+statistics line is replaced by chip Buttons rendered from a new pure helper
+`QuestListFilter.CountByStatusTag`; a zero-results overlay and a
+`DispatcherTimer` search debounce round out the page changes. The one
+non-obvious idea: persistence is gated on `_isDataLoaded` so that service events
+racing ahead of the Loaded-time restore cannot overwrite the store with XAML
+defaults.
+
+## Non-Goals
+
+- No re-architecture of `QuestListPage.ApplyFilters` — it stays the single
+  apply/render pass; this change only extends it.
+- Trader/map are persisted by their combo `Tag` values (raw trader string,
+  normalized map name), not display names — display names are locale-dependent.
+
+## Current Behavior / Root Cause
+
+`ApplyFilters` built a one-line stats string into `TxtStats` from
+`QuestProgressService.GetStatistics` (global counts, not click-previews). No
+`questList.*` keys existed in the settings store — every filter reset per launch
+(the faction radio persists separately as `SettingsService.PlayerFaction`, a
+profile setting, not a filter). `TxtSearch_TextChanged` called `ApplyFilters`
+synchronously per keystroke. Zero-result filtering left the ListBox blank.
+
+## Design
+
+Changed/new files:
+
+- `TarkovHelper/Services/Settings/QuestListSettings.cs` (new) — keys
+  `questList.kappaOnly/itemRequired/trader/map/statusTag/detailPanelWidth/recommendationsExpanded`,
+  cached values, change-detected saves, clamped width (250–800, default 350).
+- `TarkovHelper/Pages/QuestListFilter.cs` — `CountByStatusTag(viewModels,
+  criteria, statusTags)`: per-tag counts via `criteria with { StatusTag = tag }`.
+- `TarkovHelper/Pages/QuestListPage.xaml` — `StatusChipStyle` + five chip
+  Buttons (`ChipActive`…`ChipUnavailable`) on the statistics bar; `PnlEmptyState`
+  overlay (title/hint/`BtnResetFilters`) inside the list border; tooltips on the
+  row name/subtitle; `DetailColumn` named + `DetailSplitter.DragCompleted`.
+- `TarkovHelper/Pages/QuestListPage.xaml.cs` — restore in Loaded
+  (`RestoreFilterSettings`, `RestoreDetailPanelWidth`), persistence + empty state
+  + `UpdateStatusChips` in `ApplyFilters`, `StatusChip_Click`,
+  `BtnResetFilters_Click`, debounced `TxtSearch_TextChanged`,
+  `SelectComboByTag` helper.
+- `TarkovHelper/Pages/Components/QuestRecommendationsPanel.xaml(.cs)` — tooltips
+  on truncated texts; expander state restore/save.
+- `TarkovHelper/Services/LocalizationService.Quest.cs` — `QuestListEmptyTitle`,
+  `QuestListEmptyHint`, `ResetFiltersButton` (EN/KO/JA).
+- Tests: `TarkovHelper.Tests/QuestListFilterTests.cs` (CountByStatusTag),
+  `TarkovHelper.Tests/QuestOverviewFiltersE2ETests.cs` (new),
+  `TarkovHelper.Tests/E2ETestHarness.cs` (`ToggleElement`, `GetToggleState`,
+  `GetListItemCount`), `TarkovHelper.Tests/QuestNavigationE2ETests.cs`
+  (debounce-safe wait in `NavigateToHiddenPrereq`).
+
+Data flow: `ApplyFilters` snapshots the filter bar into `QuestFilterCriteria`,
+filters + sorts as before, then: empty-state visibility from the filtered count →
+persist snapshot (gated, below) → `TxtStats` shrinks to `Lv.{n} | {shown}/{total}`
+→ `UpdateStatusChips` renders counts + selected-chip visuals → kappa gauge.
+
+## Technical Decisions
+
+**Persistence is gated on `_isDataLoaded`, not `_isInitializing`.** Found via a
+failing e2e relaunch test: at startup `ProfileService`'s auto-switch raises
+`PlayerFactionChanged` before `QuestListPage_Loaded` (awaiting
+`ItemDbService.LoadItemsAsync`) has restored the saved filters, and
+`OnPlayerFactionChanged` used to force `_isInitializing = false` before calling
+`RefreshAllForStateChange` — so an early `ApplyFilters` persisted the XAML
+defaults over the saved state, and the later restore read back the clobbered
+values. The save now requires `_isDataLoaded` (set true only after the restore),
+and `OnPlayerFactionChanged` restores the prior `_isInitializing` instead of
+forcing false.
+
+**Chips route through `CmbStatus`.** A chip click only changes the combo
+selection (`SelectComboByTag`); the combo's `SelectionChanged` applies filters,
+and `UpdateStatusChips` derives every chip visual from the criteria snapshot.
+There is no separate chip state to drift out of sync.
+
+**Counts use `criteria with { StatusTag = tag }`.** The record's `with` copy
+carries the precomputed `NormalizedSearchText` backing field (the record doc
+already warns a `with` on `SearchText` would not recompute it — here that copy
+semantics is exactly right, and a unit test pins it).
+
+**`QuestListSettings` is first touched from Loaded handlers, never
+constructors.** `MainWindow` constructs the pages while `UserDataDbService` may
+not be initialized; a constructor-time singleton would cache defaults forever.
+The recommendations panel restores its expander in its own Loaded with a
+once-guard (`_expanderStateRestored`), because the e2e harness's tab-bounce
+detaches/reattaches the page and re-fires Loaded.
+
+**Search debounce is 250 ms and any explicit `ApplyFilters` cancels the pending
+tick** — a combo/checkbox change never races a stale pending search apply; the
+snapshot it takes already contains the latest text.
+
+**The e2e harness waits for the filtered list, not the keystroke.**
+`NavigateToHiddenPrereq` used `SetTextBoxValue` + `SelectListItemAt(0)`
+back-to-back; with a debounce that selects row 0 of the still-unfiltered list.
+The helper now waits for the list to reach the expected filtered count
+(`GetListItemCount`), which is timing-independent.
+
+## Test Strategy
+
+- **Unit** (`QuestListFilterTests`): CountByStatusTag groups by tag with
+  "Locked" including LevelLocked; non-status criteria constrain counts; counts
+  are independent of the currently selected tag; other-faction quests count only
+  under "Unavailable"; normalized search text survives the `with` copy.
+- **E2E** (`QuestOverviewFiltersE2ETests`): empty state appears at zero results
+  and reset repopulates (status "All", search cleared); chip click applies the
+  status and re-click returns to "All" (combo probed); filter state persists
+  across a relaunch against the same Config dir, including direct
+  `user_data.db` assertions and search-text transience.
+- **Not automated**: the splitter-drag save path (`DetailSplitter_DragCompleted`)
+  — dragging an 8px transparent GridSplitter with the real mouse is too brittle
+  for UIA; the restore path runs at every launch and the property's clamp logic
+  is trivial. Verified manually.
+
+## Verification
+
+- `dotnet build TarkovHelper.sln` — clean, 0 warnings.
+- `dotnet test --filter "Category!=E2E"` — 164 passed.
+- `dotnet test --filter "Category=E2E"` — 22 passed (10 quest, 12 header/bounds/map).
+- Manual: chips filter and toggle; empty state + reset; restart restores
+  filters, panel width, and expander state; KO/JA empty-state strings.
+
+## Risks & Migration
+
+- New `questList.*` keys in the `UserSettings` table; absent keys mean defaults,
+  so no migration is needed and rollback merely orphans the keys (harmless).
+- The `GetListItemCount` harness helper counts realized ListItem peers only —
+  exact for the small counts (0/1) the tests assert, not for virtualized
+  hundreds; documented on the helper.
