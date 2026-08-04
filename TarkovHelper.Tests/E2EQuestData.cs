@@ -101,6 +101,59 @@ internal static class E2EQuestData
         return name!;
     }
 
+    /// <summary>
+    /// A quest with exactly ONE mutually exclusive alternative (a single
+    /// OptionalQuests row) and no availability gate, whose alternative is a
+    /// different quest it does not directly require: completing it must preview
+    /// exactly one auto-failed alternative ("Will be FAILED (1)") regardless of the
+    /// length of its prerequisite chain, and Confirm must persist the alternative
+    /// as Failed. The English name is a unique search substring like the other
+    /// queries. Also returns both quest Ids — the keys QuestProgress rows are
+    /// written under — for persistence assertions.
+    /// </summary>
+    public static (string QuestName, string AltName, string QuestId, string AltId) FindQuestWithSingleAlternative()
+    {
+        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT q.Name, alt.Name, q.Id, alt.Id
+            FROM Quests q
+            JOIN OptionalQuests o ON o.QuestId = q.Id
+            JOIN Quests alt ON alt.Id = o.AlternativeQuestId
+            WHERE (SELECT COUNT(*) FROM OptionalQuests o2 WHERE o2.QuestId = q.Id) = 1
+              AND q.Faction IS NULL AND q.RequiredEdition IS NULL
+              AND (q.RequiredPrestigeLevel IS NULL OR q.RequiredPrestigeLevel = 0)
+              AND (q.RequiredDecodeCount IS NULL OR q.RequiredDecodeCount = 0)
+              AND alt.Name <> q.Name
+              AND NOT EXISTS (SELECT 1 FROM QuestRequirements qr
+                              WHERE qr.QuestId = q.Id AND qr.RequiredQuestId = alt.Id)
+              AND (SELECT COUNT(*) FROM Quests q2
+                   WHERE instr(lower(q2.Name), lower(q.Name)) > 0
+                      OR instr(lower(ifnull(q2.NameKO, '')), lower(q.Name)) > 0
+                      OR instr(lower(ifnull(q2.NameJA, '')), lower(q.Name)) > 0) = 1
+            ORDER BY q.Name
+            LIMIT 1";
+
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read(),
+            "tarkov_data.db has no ungated quest with exactly one alternative matching the test constraints");
+        return (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3));
+    }
+
+    /// <summary>The asset-db Id of the quest with this exact English name (QuestProgress rows are keyed by it).</summary>
+    public static string QuestIdByName(string name)
+    {
+        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id FROM Quests WHERE Name = $name";
+        command.Parameters.AddWithValue("$name", name);
+        var id = command.ExecuteScalar() as string;
+        Assert.False(string.IsNullOrEmpty(id), $"tarkov_data.db has no quest named '{name}'");
+        return id!;
+    }
+
     /// <summary>Every quest's English display name, for spotting quest links in templated lists.</summary>
     public static HashSet<string> AllQuestNames()
     {

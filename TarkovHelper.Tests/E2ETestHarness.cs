@@ -78,7 +78,9 @@ internal sealed class AppDriver : IDisposable
 
     /// <summary>
     /// Waits for the process's "Tarkov Helper" top-level window. Matched by exact
-    /// title because debug builds also open a "Debug Toolbox" window, which makes
+    /// title because the app opens other top-level windows — owned dialogs such as
+    /// QuestCompleteConfirmDialog (and, outside the harness, the Debug Toolbox,
+    /// which Launch disables via TARKOVHELPER_DISABLE_DEBUG_TOOLBOX) — that make
     /// Process.MainWindowHandle ambiguous.
     /// </summary>
     private static IntPtr WaitForMainWindow(Process process)
@@ -598,6 +600,16 @@ public sealed class E2EFactAttribute : FactAttribute
     }
 }
 
+/// <summary>Theory twin of <see cref="E2EFactAttribute"/>: skips when the app build output is missing.</summary>
+public sealed class E2ETheoryAttribute : TheoryAttribute
+{
+    public E2ETheoryAttribute()
+    {
+        if (AppUnderTest.DllPath == null)
+            Skip = "TarkovHelper build output not found - build TarkovHelper.csproj first";
+    }
+}
+
 /// <summary>
 /// All e2e test classes join this single xUnit collection so they run SERIALLY.
 /// Without it, xUnit runs different classes in parallel by default, which would launch
@@ -625,13 +637,44 @@ public abstract class E2ETestBase : IDisposable
         return dir;
     }
 
+    /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
+    private protected static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
+        => AppDriver.PollUntil(condition, what, timeoutSeconds);
+
+    /// <summary>
+    /// Shared quest-tab choreography: applies the status filter, searches the quest
+    /// (a unique substring per the E2EQuestData queries), selects the single
+    /// surviving row, and waits for its detail panel.
+    /// </summary>
+    private protected static void ShowQuestDetail(AppDriver app, string questName, string statusFilter)
+    {
+        app.SelectTab("TabQuests", "LstQuests");
+        app.SelectComboItemByName("CmbStatus", statusFilter);
+        app.SetTextBoxValue("TxtSearch", questName);
+        // The search filter is debounced (QuestListPage.TxtSearch_TextChanged), so wait
+        // for it to apply before touching row 0 — otherwise this could grab the first
+        // row of the still-unfiltered list. The E2EQuestData queries guarantee the
+        // name is a unique search substring, so exactly one row survives.
+        WaitUntil(() => app.GetListItemCount("LstQuests") == 1,
+            $"quest list to filter down to '{questName}'");
+        app.SelectListItemAt("LstQuests", 0);
+        WaitUntil(() => app.GetElementText("TxtDetailName") == questName,
+            $"detail panel to show '{questName}'");
+    }
+
     /// <summary>
     /// Launches the app against a fresh throwaway Config dir and maximizes its window.
     /// private protected because the AppDriver return type is internal.
     /// </summary>
-    private protected AppDriver LaunchMaximized()
+    private protected AppDriver LaunchMaximized() => LaunchMaximized(NewConfigDir());
+
+    /// <summary>
+    /// Same, against a caller-held Config dir — for tests that also read the
+    /// user_data.db in that dir (persistence assertions, relaunch flows).
+    /// </summary>
+    private protected static AppDriver LaunchMaximized(string configDir)
     {
-        var app = AppDriver.Launch(NewConfigDir());
+        var app = AppDriver.Launch(configDir);
         try
         {
             app.ShowWindow(Win32.SW_MAXIMIZE);
@@ -859,5 +902,34 @@ internal static class E2EDb
         command.CommandText = "SELECT Value FROM UserSettings WHERE Key = $key";
         command.Parameters.AddWithValue("$key", key);
         return command.ExecuteScalar() as string;
+    }
+
+    /// <summary>
+    /// Reads a quest's persisted progress status (the QuestProgress row keyed by
+    /// quest Id or NormalizedName), or null when no row / no db exists yet. Lets
+    /// tests assert a completion actually reached user_data.db — the app's batch
+    /// save is fire-and-forget with a swallowing catch, so in-memory UI state alone
+    /// proves nothing about persistence.
+    /// </summary>
+    public static string? ReadQuestProgress(string configDir, string questKey)
+    {
+        var dbPath = Path.Combine(configDir, "user_data.db");
+        if (!File.Exists(dbPath)) return null;
+
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT Status FROM QuestProgress WHERE Id = $key OR NormalizedName = $key LIMIT 1";
+        command.Parameters.AddWithValue("$key", questKey);
+        try
+        {
+            return command.ExecuteScalar() as string;
+        }
+        catch (SqliteException)
+        {
+            // Table not created yet (app has not finished its first save).
+            return null;
+        }
     }
 }

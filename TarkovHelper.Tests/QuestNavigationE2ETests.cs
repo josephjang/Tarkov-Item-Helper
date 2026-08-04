@@ -26,29 +26,15 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
 {
     // ---------- shared choreography ----------
 
-    /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
-    private static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
-        => AppDriver.PollUntil(condition, what, timeoutSeconds);
-
     /// <summary>
-    /// On the Quests tab: filter to Locked + the quest's name, open the quest, and
-    /// click its prerequisite link — landing in the "shown quest hidden by filters"
-    /// state (the prerequisite is Active, so the Locked filter excludes it).
+    /// On the Quests tab: filter to Locked + the quest's name, open the quest
+    /// (shared E2ETestBase.ShowQuestDetail choreography), and click its prerequisite
+    /// link — landing in the "shown quest hidden by filters" state (the prerequisite
+    /// is Active, so the Locked filter excludes it).
     /// </summary>
     private static void NavigateToHiddenPrereq(AppDriver app, string questName, string prereqName)
     {
-        app.SelectTab("TabQuests", "LstQuests");
-        app.SelectComboItemByName("CmbStatus", "Locked");
-        app.SetTextBoxValue("TxtSearch", questName);
-        // The search filter is debounced (QuestListPage.TxtSearch_TextChanged), so wait
-        // for it to apply before touching row 0 — otherwise this could grab the first
-        // row of the still-unfiltered list. The query guarantees the name is a unique
-        // search substring, so exactly one row survives.
-        WaitUntil(() => app.GetListItemCount("LstQuests") == 1,
-            $"quest list to filter down to '{questName}'");
-        app.SelectListItemAt("LstQuests", 0);
-        WaitUntil(() => app.GetElementText("TxtDetailName") == questName,
-            $"detail panel to show '{questName}'");
+        ShowQuestDetail(app, questName, "Locked");
 
         app.ClickTextElementWithScroll(prereqName, "PrerequisitesList", "DetailScrollViewer");
         WaitUntil(() => app.GetElementText("TxtDetailName") == prereqName,
