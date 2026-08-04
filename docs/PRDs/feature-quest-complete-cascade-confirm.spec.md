@@ -80,8 +80,9 @@ Files (tests):
 - `TarkovHelper.Tests/E2ETestHarness.cs` — owned-window (dialog) helpers.
 
 **Shared traversal core.** `ComputeCompletionCascade` is `internal static` on
-`QuestProgressService` (visible to the test project via project reference,
-constructible without the singleton). Inputs: the task, the
+`QuestProgressService` (visible to the test project via the
+`InternalsVisibleTo` declaration in `TarkovHelper.csproj`, callable without the
+singleton). Inputs: the task, the
 `completePrerequisites` flag, and four delegates — `taskById`, `taskByName`,
 `getStatus` (derived status, i.e. `GetStatus`), and `recordedStatus` (raw
 `_questProgress` lookup by key). Output: the ordered list of quests the
@@ -237,3 +238,53 @@ core — pinned by the unit tests above (which encode the old semantics,
 including the obscure ones) and by the e2e completion paths. Batch-save and
 single-notification behavior are preserved unchanged: the apply step writes
 the same keys in the same order the interleaved code did.
+
+## Amendment — deep-review fixes (2026-08-05)
+
+A deep review of this change (branch `fix/quest-cascade-review`) revised two
+decisions recorded above and hardened several details. The original text is
+kept as the rationale of record; where this section disagrees, it wins.
+
+- **Requirement semantics: mirrored from `ArePrerequisitesMet`, no longer
+  "pre-refactor verbatim".** The pre-refactor traversal ignored
+  `TaskRequirement.Status` and `GroupId`, which the review showed to be a bug,
+  not a decision: it auto-completed Fail-type prerequisites (the bundled DB
+  has 2 — e.g. *Another Shipping Delay* requires *Hot Wheels* **failed**, and
+  marking it Done locks the dependent quest permanently), over-completed
+  Accept-type prerequisites (23 rows), and completed every member of a
+  multi-member OR group (e.g. *Make Amends*' three branches). The core now
+  auto-completes only plain Complete-type requirements; Fail-/Accept-type
+  requirements and multi-member OR groups are skipped entirely — the same
+  "user must choose" precedent the alternative-prerequisite skip already set.
+  A single-member group still behaves as a plain requirement.
+- **The confirmed plan is applied verbatim, not recomputed.** The core returns
+  an ordered `QuestCompletionPlan` whose entries carry the progress key they
+  are written under; `GetCompletionCascade` wraps it and the new
+  `ApplyCompletionCascade` writes it as-is. `ShowDialog` pumps the dispatcher,
+  so background log-sync events can mutate progress while the modal is open —
+  recomputing after Confirm (the original design) could apply a cascade the
+  user never saw. `CompleteQuest(task, bool)` still computes-and-applies for
+  the log-sync callers.
+- **`_questProgress` is now `OrdinalIgnoreCase`**, matching the task-lookup
+  dictionaries, the traversal's key sets, and the dictionary
+  `UserDataDbService.LoadQuestProgressAsync` already builds (whose comparer
+  was silently dropped on copy-in): stored key casing was never canonical.
+- **Progress keys tolerate an empty-string first Id** (first *non-empty* Id,
+  else NormalizedName), so an anomalous `Ids = [""]` row can neither become
+  the literal key `""` nor silently no-op a completion.
+- **Dialog**: construction moved behind a static `Confirm(owner, task,
+  cascade)` factory (the `Windows/` convention); Escape/Enter work via
+  `IsCancel`/`IsDefault`; the two dismiss buttons share one handler; the
+  content sits in one outer `ScrollViewer` (the per-section `MaxHeight`s
+  clipped the failed list at larger base font sizes); the `#FF5722` accent
+  became the shared `AlternativeQuestBrush` resource, also used by the detail
+  panel's "Other Choices" section.
+- **The debug skip-traces were removed from the pure core** — they fired twice
+  per completed click, and on cancelled clicks, from a method documented as
+  side-effect-free.
+- **Tests**: the requirement-semantics rules, the plan shape (keys, the
+  prerequisites/clicked split), the `completePrerequisites: false` mode, and
+  `GetCompletionCascade`/`IsEmpty` (instance-level, uninitialized-service
+  pattern) gained unit guards; the `QuestWorld.GetStatus` double now mirrors
+  the real name-key fallback; e2e gained the auto-failed-alternative preview,
+  X-button dismissal, and user_data.db persistence assertions.
