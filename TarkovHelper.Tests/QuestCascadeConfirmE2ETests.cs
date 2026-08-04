@@ -1,4 +1,5 @@
 using System.Windows.Automation;
+using TarkovHelper.Services;
 
 namespace TarkovHelper.Tests;
 
@@ -30,10 +31,13 @@ namespace TarkovHelper.Tests;
 public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
 {
     /// <summary>
-    /// QuestCompleteConfirmDialog's window title. E2e runs use a fresh profile whose
-    /// language defaults to EN, so the localized Title the dialog sets matches this.
+    /// Dialog strings derived from the same LocalizationService the dialog reads (EN —
+    /// e2e profiles default to EN; AppDriver.RemoveLegacyLanguageOverride keeps that
+    /// true), so editing user-facing copy cannot break these tests. The COUNTS stay
+    /// hard-coded on the test side — a cascade previewing 0 or 2 still fails.
     /// </summary>
-    private const string DialogTitle = "Confirm Quest Completion";
+    private static readonly LocalizationService Loc = TestLocalization.WithLanguage(AppLanguage.EN);
+    private static readonly string DialogTitle = Loc.CascadeConfirmTitle;
 
     /// <summary>Invokes Mark Complete and waits for the cascade dialog window.</summary>
     private static AutomationElement OpenCascadeDialog(AppDriver app)
@@ -51,7 +55,7 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
     {
         WaitUntil(() => AppDriver.HasTextElementUnder(dialog, prereqName),
             $"cascade dialog to list prerequisite '{prereqName}'");
-        Assert.Equal("Will also be completed (1)",
+        Assert.Equal(string.Format(Loc.CascadeCompletedHeaderFormat, 1),
             AppDriver.WaitForElementUnder(dialog, "TxtCascadeCompletedHeader").Current.Name);
 
         // A Collapsed WPF element exposes no automation peer at all, so the failed
@@ -141,7 +145,7 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
         // The red failed section previews exactly the one guaranteed alternative.
         WaitUntil(() => AppDriver.HasTextElementUnder(dialog, altName),
             $"cascade dialog to list alternative '{altName}'");
-        Assert.Equal("Will be FAILED (1)",
+        Assert.Equal(string.Format(Loc.CascadeFailedHeaderFormat, 1),
             AppDriver.WaitForElementUnder(dialog, "TxtCascadeFailedHeader").Current.Name);
 
         AppDriver.Invoke(AppDriver.WaitForElementUnder(dialog, "BtnCascadeConfirm"));

@@ -72,10 +72,13 @@ public sealed class QuestCompletionCascadeTests
         public QuestCompletionPlan Plan(TarkovTask task, bool completePrerequisites = true)
             => QuestProgressService.ComputeCompletionCascade(
                 task, completePrerequisites,
-                id => _byId.GetValueOrDefault(id),
-                name => _byName.GetValueOrDefault(name),
-                GetStatus,
-                key => Recorded.TryGetValue(key, out var status) ? status : null);
+                new QuestProgressService.CascadeLookups
+                {
+                    TaskById = id => _byId.GetValueOrDefault(id),
+                    TaskByName = name => _byName.GetValueOrDefault(name),
+                    Status = GetStatus,
+                    RecordedStatus = key => Recorded.TryGetValue(key, out var status) ? status : null,
+                });
 
         public (List<TarkovTask> ToComplete, List<(TarkovTask Task, string Key)> ToFail) Cascade(
             TarkovTask task, bool completePrerequisites = true)
@@ -545,8 +548,8 @@ public sealed class QuestCompletionCascadeTests
     #region GetCompletionCascade (instance preview + purity)
 
     /// <summary>
-    /// Uninitialized-instance service (same pattern as CreateWithoutDb below): the
-    /// private ctor's ProfileService subscription and the DB load are skipped and
+    /// Uninitialized-instance service (same pattern as TestLocalization.WithLanguage):
+    /// the private ctor's ProfileService subscription and the DB load are skipped and
     /// the lookup fields are seeded directly, so the public preview entry point —
     /// GetCompletionCascade and QuestCompletionCascade.IsEmpty, the actual
     /// dialog-or-no-dialog decision — is exercised for real.
@@ -623,6 +626,50 @@ public sealed class QuestCompletionCascadeTests
         Assert.Empty(RecordedProgressOf(service));
     }
 
+    [Fact]
+    public void ResolveRequirementTask_prefers_the_id_over_a_conflicting_name()
+    {
+        var byId = NewTask("real-id", "real-quest");
+        var decoy = NewTask("other-id", "decoy-quest");
+        var service = CreateServiceWith(byId, decoy);
+        Assert.Same(byId, service.ResolveRequirementTask(
+            new TaskRequirement { TaskId = "real-id", TaskNormalizedName = "decoy-quest" }));
+        Assert.Same(decoy, service.ResolveRequirementTask(
+            new TaskRequirement { TaskNormalizedName = "decoy-quest" }));
+        Assert.Null(service.ResolveRequirementTask(new TaskRequirement { TaskId = "ghost" }));
+    }
+
+    #endregion
+
+    #region Batch completion paths (key + done-check conventions shared with the core)
+
+    [Fact]
+    public void CompleteQuestsBatch_records_an_empty_first_id_task_under_its_name()
+    {
+        var quest = new TarkovTask { Ids = new List<string> { "" }, Name = "batch-empty-id",
+                                     NormalizedName = "batch-empty-id", Trader = "Prapor" };
+        var service = CreateServiceWith(quest);
+
+        service.CompleteQuestsBatch(new[] { quest });
+
+        // Same anomaly guard the cascade core already carries
+        // (Planned_key_falls_back_to_normalized_name_when_the_first_id_is_empty).
+        Assert.Equal(QuestStatus.Done, RecordedProgressOf(service)["batch-empty-id"]);
+    }
+
+    [Fact]
+    public void CompleteQuestsBatch_skips_a_quest_recorded_done_under_its_name_only()
+    {
+        var quest = NewTask("q-id", "batch-migrated");
+        var service = CreateServiceWith(quest);
+        RecordedProgressOf(service)["batch-migrated"] = QuestStatus.Done;
+
+        service.CompleteQuestsBatch(new[] { quest });
+
+        Assert.False(RecordedProgressOf(service).ContainsKey("q-id"),
+            "a quest already Done under its NormalizedName was re-completed under its Id");
+    }
+
     #endregion
 
     #region Dialog localization strings
@@ -638,21 +685,6 @@ public sealed class QuestCompletionCascadeTests
         "CascadeConfirmQuestFormat", "CascadeCompletedHeaderFormat", "CascadeFailedHeaderFormat",
     };
 
-    /// <summary>
-    /// The real constructor opens user_data.db via UserDataDbService; an uninitialized
-    /// instance skips that, and the string properties only read _currentLanguage
-    /// (same approach as LocalizationHeaderStringsTests).
-    /// </summary>
-    private static LocalizationService CreateWithoutDb(AppLanguage language)
-    {
-        var loc = (LocalizationService)RuntimeHelpers.GetUninitializedObject(typeof(LocalizationService));
-        var field = typeof(LocalizationService)
-            .GetField("_currentLanguage", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(field);
-        field!.SetValue(loc, language);
-        return loc;
-    }
-
     private static string GetString(LocalizationService loc, string key)
     {
         var prop = typeof(LocalizationService).GetProperty(key, BindingFlags.Public | BindingFlags.Instance);
@@ -666,7 +698,7 @@ public sealed class QuestCompletionCascadeTests
     [InlineData(AppLanguage.JA)]
     public void Every_cascade_dialog_string_is_nonempty(AppLanguage language)
     {
-        var loc = CreateWithoutDb(language);
+        var loc = TestLocalization.WithLanguage(language);
         foreach (var key in CascadeStringKeys)
         {
             Assert.False(string.IsNullOrWhiteSpace(GetString(loc, key)), $"'{key}' is empty for {language}");
@@ -679,7 +711,7 @@ public sealed class QuestCompletionCascadeTests
     [InlineData(AppLanguage.JA)]
     public void Cascade_format_strings_keep_their_argument_slot(AppLanguage language)
     {
-        var loc = CreateWithoutDb(language);
+        var loc = TestLocalization.WithLanguage(language);
         foreach (var key in CascadeFormatKeys)
         {
             Assert.Contains("{0}", GetString(loc, key));
@@ -689,9 +721,9 @@ public sealed class QuestCompletionCascadeTests
     [Fact]
     public void Cascade_dialog_strings_are_translated_for_korean_and_japanese()
     {
-        var en = CreateWithoutDb(AppLanguage.EN);
-        var ko = CreateWithoutDb(AppLanguage.KO);
-        var ja = CreateWithoutDb(AppLanguage.JA);
+        var en = TestLocalization.WithLanguage(AppLanguage.EN);
+        var ko = TestLocalization.WithLanguage(AppLanguage.KO);
+        var ja = TestLocalization.WithLanguage(AppLanguage.JA);
 
         foreach (var key in CascadeStringKeys)
         {

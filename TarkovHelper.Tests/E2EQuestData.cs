@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using TarkovHelper.Services;
 
 namespace TarkovHelper.Tests;
 
@@ -8,10 +9,62 @@ namespace TarkovHelper.Tests;
 /// output) instead of hard-coded quest names, so the e2e tests survive database
 /// updates. Shared by QuestNavigationE2ETests and QuestCascadeConfirmE2ETests.
 /// All queries assume a fresh profile: no progress, default player level.
+/// The WHERE clauses are assembled from the alias-parameterized fragments below
+/// so the availability rules cannot drift between queries.
 /// </summary>
 internal static class E2EQuestData
 {
     private static string AssetDbPath => Path.Combine(AppContext.BaseDirectory, "tarkov_data.db");
+
+    /// <summary>
+    /// Opens the asset db read-only, runs one command, and hands it to
+    /// <paramref name="read"/> — the single home for the connection plumbing all
+    /// five query methods share (parameters are added inside <paramref name="read"/>).
+    /// </summary>
+    private static T Query<T>(string sql, Func<SqliteCommand, T> read)
+    {
+        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return read(command);
+    }
+
+    /// <summary>
+    /// The quest has no categorical availability gate on a fresh profile: no
+    /// faction/edition restriction and no prestige/decode requirement.
+    /// </summary>
+    private static string Ungated(string alias) => $@"
+              {alias}.Faction IS NULL AND {alias}.RequiredEdition IS NULL
+              AND ({alias}.RequiredPrestigeLevel IS NULL OR {alias}.RequiredPrestigeLevel = 0)
+              AND ({alias}.RequiredDecodeCount IS NULL OR {alias}.RequiredDecodeCount = 0)";
+
+    /// <summary>
+    /// The quest is reachable at the app's default player level (a fresh profile's
+    /// level) and has no scav-karma gate.
+    /// </summary>
+    private static string ReachableAtDefaultLevel(string alias) => $@"
+              ({alias}.MinLevel IS NULL OR {alias}.MinLevel <= {SettingsService.DefaultPlayerLevel})
+              AND {alias}.MinScavKarma IS NULL";
+
+    /// <summary>
+    /// The quest appears in no OptionalQuests row (as the quest or the alternative),
+    /// so completing it can never auto-fail anything.
+    /// </summary>
+    private static string NoAlternatives(string alias) => $@"
+              NOT EXISTS (SELECT 1 FROM OptionalQuests o
+                          WHERE o.QuestId = {alias}.Id OR o.AlternativeQuestId = {alias}.Id)";
+
+    /// <summary>
+    /// The quest's English name is unique as a case-insensitive search substring
+    /// across every quest's EN/KO/JA names (matching the quest-list search), so
+    /// typing it filters the list down to exactly that quest.
+    /// </summary>
+    private static string UniqueSearchName(string alias) => $@"
+              (SELECT COUNT(*) FROM Quests q2
+                   WHERE instr(lower(q2.Name), lower({alias}.Name)) > 0
+                      OR instr(lower(ifnull(q2.NameKO, '')), lower({alias}.Name)) > 0
+                      OR instr(lower(ifnull(q2.NameJA, '')), lower({alias}.Name)) > 0) = 1";
 
     /// <summary>
     /// A quest that is Locked on a fresh profile (exactly one Complete-type
@@ -29,41 +82,31 @@ internal static class E2EQuestData
     /// </summary>
     public static (string QuestName, string PrereqName) FindLockedQuestWithActivePrereq()
     {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
+        var sql = $@"
             SELECT q.Name, p.Name
             FROM Quests q
             JOIN QuestRequirements r ON r.QuestId = q.Id
             JOIN Quests p ON p.Id = r.RequiredQuestId
             WHERE r.RequirementType = 'Complete'
               AND (SELECT COUNT(*) FROM QuestRequirements r2 WHERE r2.QuestId = q.Id) = 1
-              AND q.Faction IS NULL AND q.RequiredEdition IS NULL
-              AND (q.RequiredPrestigeLevel IS NULL OR q.RequiredPrestigeLevel = 0)
-              AND (q.RequiredDecodeCount IS NULL OR q.RequiredDecodeCount = 0)
-              AND p.Faction IS NULL AND p.RequiredEdition IS NULL
-              AND (p.RequiredPrestigeLevel IS NULL OR p.RequiredPrestigeLevel = 0)
-              AND (p.RequiredDecodeCount IS NULL OR p.RequiredDecodeCount = 0)
-              AND (p.MinLevel IS NULL OR p.MinLevel <= 15)
-              AND p.MinScavKarma IS NULL
+              AND {Ungated("q")}
+              AND {Ungated("p")}
+              AND {ReachableAtDefaultLevel("p")}
               AND NOT EXISTS (SELECT 1 FROM QuestRequirements pr WHERE pr.QuestId = p.Id)
-              AND NOT EXISTS (SELECT 1 FROM OptionalQuests o
-                              WHERE o.QuestId = q.Id OR o.AlternativeQuestId = q.Id)
-              AND NOT EXISTS (SELECT 1 FROM OptionalQuests o
-                              WHERE o.QuestId = p.Id OR o.AlternativeQuestId = p.Id)
+              AND {NoAlternatives("q")}
+              AND {NoAlternatives("p")}
               AND p.Name <> q.Name
-              AND (SELECT COUNT(*) FROM Quests q2
-                   WHERE instr(lower(q2.Name), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameKO, '')), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameJA, '')), lower(q.Name)) > 0) = 1
+              AND {UniqueSearchName("q")}
             ORDER BY q.Name
             LIMIT 1";
 
-        using var reader = command.ExecuteReader();
-        Assert.True(reader.Read(),
-            "tarkov_data.db has no locked quest with a single active prerequisite matching the test constraints");
-        return (reader.GetString(0), reader.GetString(1));
+        return Query(sql, command =>
+        {
+            using var reader = command.ExecuteReader();
+            Assert.True(reader.Read(),
+                "tarkov_data.db has no locked quest with a single active prerequisite matching the test constraints");
+            return (reader.GetString(0), reader.GetString(1));
+        });
     }
 
     /// <summary>
@@ -74,31 +117,24 @@ internal static class E2EQuestData
     /// </summary>
     public static string FindStandaloneActiveQuest()
     {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
+        var sql = $@"
             SELECT q.Name
             FROM Quests q
             WHERE NOT EXISTS (SELECT 1 FROM QuestRequirements r WHERE r.QuestId = q.Id)
-              AND NOT EXISTS (SELECT 1 FROM OptionalQuests o
-                              WHERE o.QuestId = q.Id OR o.AlternativeQuestId = q.Id)
-              AND q.Faction IS NULL AND q.RequiredEdition IS NULL
-              AND (q.RequiredPrestigeLevel IS NULL OR q.RequiredPrestigeLevel = 0)
-              AND (q.RequiredDecodeCount IS NULL OR q.RequiredDecodeCount = 0)
-              AND (q.MinLevel IS NULL OR q.MinLevel <= 15)
-              AND q.MinScavKarma IS NULL
-              AND (SELECT COUNT(*) FROM Quests q2
-                   WHERE instr(lower(q2.Name), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameKO, '')), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameJA, '')), lower(q.Name)) > 0) = 1
+              AND {NoAlternatives("q")}
+              AND {Ungated("q")}
+              AND {ReachableAtDefaultLevel("q")}
+              AND {UniqueSearchName("q")}
             ORDER BY q.Name
             LIMIT 1";
 
-        var name = command.ExecuteScalar() as string;
-        Assert.False(string.IsNullOrEmpty(name),
-            "tarkov_data.db has no prerequisite-free, alternative-free quest matching the test constraints");
-        return name!;
+        return Query(sql, command =>
+        {
+            var name = command.ExecuteScalar() as string;
+            Assert.False(string.IsNullOrEmpty(name),
+                "tarkov_data.db has no prerequisite-free, alternative-free quest matching the test constraints");
+            return name!;
+        });
     }
 
     /// <summary>
@@ -113,57 +149,46 @@ internal static class E2EQuestData
     /// </summary>
     public static (string QuestName, string AltName, string QuestId, string AltId) FindQuestWithSingleAlternative()
     {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
+        var sql = $@"
             SELECT q.Name, alt.Name, q.Id, alt.Id
             FROM Quests q
             JOIN OptionalQuests o ON o.QuestId = q.Id
             JOIN Quests alt ON alt.Id = o.AlternativeQuestId
             WHERE (SELECT COUNT(*) FROM OptionalQuests o2 WHERE o2.QuestId = q.Id) = 1
-              AND q.Faction IS NULL AND q.RequiredEdition IS NULL
-              AND (q.RequiredPrestigeLevel IS NULL OR q.RequiredPrestigeLevel = 0)
-              AND (q.RequiredDecodeCount IS NULL OR q.RequiredDecodeCount = 0)
+              AND {Ungated("q")}
               AND alt.Name <> q.Name
               AND NOT EXISTS (SELECT 1 FROM QuestRequirements qr
                               WHERE qr.QuestId = q.Id AND qr.RequiredQuestId = alt.Id)
-              AND (SELECT COUNT(*) FROM Quests q2
-                   WHERE instr(lower(q2.Name), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameKO, '')), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameJA, '')), lower(q.Name)) > 0) = 1
+              AND {UniqueSearchName("q")}
             ORDER BY q.Name
             LIMIT 1";
 
-        using var reader = command.ExecuteReader();
-        Assert.True(reader.Read(),
-            "tarkov_data.db has no ungated quest with exactly one alternative matching the test constraints");
-        return (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3));
+        return Query(sql, command =>
+        {
+            using var reader = command.ExecuteReader();
+            Assert.True(reader.Read(),
+                "tarkov_data.db has no ungated quest with exactly one alternative matching the test constraints");
+            return (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3));
+        });
     }
 
     /// <summary>The asset-db Id of the quest with this exact English name (QuestProgress rows are keyed by it).</summary>
     public static string QuestIdByName(string name)
-    {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Id FROM Quests WHERE Name = $name";
-        command.Parameters.AddWithValue("$name", name);
-        var id = command.ExecuteScalar() as string;
-        Assert.False(string.IsNullOrEmpty(id), $"tarkov_data.db has no quest named '{name}'");
-        return id!;
-    }
+        => Query("SELECT Id FROM Quests WHERE Name = $name", command =>
+        {
+            command.Parameters.AddWithValue("$name", name);
+            var id = command.ExecuteScalar() as string;
+            Assert.False(string.IsNullOrEmpty(id), $"tarkov_data.db has no quest named '{name}'");
+            return id!;
+        });
 
     /// <summary>Every quest's English display name, for spotting quest links in templated lists.</summary>
     public static HashSet<string> AllQuestNames()
-    {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Name FROM Quests WHERE Name IS NOT NULL AND Name <> ''";
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        using var reader = command.ExecuteReader();
-        while (reader.Read()) names.Add(reader.GetString(0));
-        return names;
-    }
+        => Query("SELECT Name FROM Quests WHERE Name IS NOT NULL AND Name <> ''", command =>
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) names.Add(reader.GetString(0));
+            return names;
+        });
 }

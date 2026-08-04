@@ -1250,9 +1250,7 @@ namespace TarkovHelper.Pages
                 // Add AND requirements (each as separate entry)
                 foreach (var req in andRequirements)
                 {
-                    var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                        ? _progressService.GetTaskById(req.TaskId)
-                        : _progressService.GetTask(req.TaskNormalizedName);
+                    var reqTask = _progressService.ResolveRequirementTask(req);
 
                     if (reqTask == null) continue;
 
@@ -1285,9 +1283,7 @@ namespace TarkovHelper.Pages
                     if (orItems.Count == 1)
                     {
                         var req = orItems[0];
-                        var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? _progressService.GetTaskById(req.TaskId)
-                            : _progressService.GetTask(req.TaskNormalizedName);
+                        var reqTask = _progressService.ResolveRequirementTask(req);
 
                         if (reqTask != null)
                         {
@@ -1323,9 +1319,7 @@ namespace TarkovHelper.Pages
                     bool isFirst = true;
                     foreach (var req in orItems)
                     {
-                        var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? _progressService.GetTaskById(req.TaskId)
-                            : _progressService.GetTask(req.TaskNormalizedName);
+                        var reqTask = _progressService.ResolveRequirementTask(req);
 
                         if (reqTask == null) continue;
 

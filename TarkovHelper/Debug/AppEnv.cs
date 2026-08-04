@@ -49,5 +49,15 @@ namespace TarkovHelper.Debug
         /// </summary>
         public static bool DisableDebugToolbox { get; } =
             !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TARKOVHELPER_DISABLE_DEBUG_TOOLBOX"));
+
+        /// <summary>
+        /// True when the TARKOVHELPER_DISABLE_UPDATE_CHECK environment variable is set
+        /// (any non-empty value). E2e tests set it so the app under test never fetches
+        /// update.xml: a published version newer than the built one flips the header's
+        /// BtnVersionChip/ChipVersion state mid-test, turning every branch built before a
+        /// release into a network-dependent flake (HeaderE2ETests asserts the chip state).
+        /// </summary>
+        public static bool DisableUpdateCheck { get; } =
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TARKOVHELPER_DISABLE_UPDATE_CHECK"));
     }
 }

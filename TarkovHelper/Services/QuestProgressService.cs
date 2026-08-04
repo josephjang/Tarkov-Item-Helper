@@ -498,10 +498,7 @@ namespace TarkovHelper.Services
                 // Check AND requirements (GroupId = 0): ALL must be satisfied
                 foreach (var req in andRequirements)
                 {
-                    // Primary: lookup by TaskId, fallback to TaskNormalizedName for backwards compatibility
-                    var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                        ? GetTaskById(req.TaskId)
-                        : GetTask(req.TaskNormalizedName);
+                    var reqTask = ResolveRequirementTask(req);
 
                     if (reqTask == null)
                         continue;
@@ -519,10 +516,7 @@ namespace TarkovHelper.Services
 
                     foreach (var req in group)
                     {
-                        // Primary: lookup by TaskId, fallback to TaskNormalizedName for backwards compatibility
-                        var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? GetTaskById(req.TaskId)
-                            : GetTask(req.TaskNormalizedName);
+                        var reqTask = ResolveRequirementTask(req);
 
                         if (reqTask == null)
                             continue;
@@ -618,8 +612,7 @@ namespace TarkovHelper.Services
             // Compute the full plan first, then apply it. The decision logic lives in
             // ComputeCompletionCascade, shared with GetCompletionCascade so the
             // confirmation preview cannot drift from what actually happens here.
-            var plan = ComputeCompletionCascade(
-                task, completePrerequisites, GetTaskById, GetTask, GetStatus, GetRecordedStatus);
+            var plan = ComputeCompletionCascade(task, completePrerequisites, Lookups);
 
             ApplyCompletionPlan(plan);
         }
@@ -688,8 +681,7 @@ namespace TarkovHelper.Services
         /// </summary>
         public QuestCompletionCascade GetCompletionCascade(TarkovTask task)
         {
-            var plan = ComputeCompletionCascade(
-                task, completePrerequisites: true, GetTaskById, GetTask, GetStatus, GetRecordedStatus);
+            var plan = ComputeCompletionCascade(task, completePrerequisites: true, Lookups);
 
             return new QuestCompletionCascade(plan);
         }
@@ -697,6 +689,25 @@ namespace TarkovHelper.Services
         /// <summary>Raw recorded progress for a key (quest Id or NormalizedName); null when unrecorded.</summary>
         private QuestStatus? GetRecordedStatus(string key)
             => _questProgress.TryGetValue(key, out var status) ? status : null;
+
+        /// <summary>
+        /// True when progress already records this quest Done under either key it may be
+        /// stored under — its progress key or its NormalizedName (legacy migration rows).
+        /// The instance twin of the cascade core's IsDoneRecordedOrPlanned, kept in one
+        /// place so the batch paths cannot drift from the traversal's done-check.
+        /// </summary>
+        private bool IsRecordedDone(TarkovTask task)
+            => RecordedDoneUnder(ProgressKeyOf(task)) || RecordedDoneUnder(task.NormalizedName);
+
+        private bool RecordedDoneUnder(string? key)
+            => !string.IsNullOrEmpty(key) && GetRecordedStatus(key) == QuestStatus.Done;
+
+        /// <summary>This service's lookups for the cascade core — the single construction site.</summary>
+        private CascadeLookups Lookups => new()
+        {
+            TaskById = GetTaskById, TaskByName = GetTask,
+            Status = GetStatus, RecordedStatus = GetRecordedStatus,
+        };
 
         /// <summary>
         /// A requirement whose Status list names "complete" — or names nothing, the
@@ -719,6 +730,73 @@ namespace TarkovHelper.Services
         {
             var id = quest.Ids?.FirstOrDefault(i => !string.IsNullOrEmpty(i));
             return !string.IsNullOrEmpty(id) ? id : quest.NormalizedName;
+        }
+
+        /// <summary>
+        /// The quest a requirement row points at: by TaskId when it carries one, else by
+        /// the legacy TaskNormalizedName. The single home for the Id-first-else-name
+        /// convention every requirement reader shares (ArePrerequisitesMet, the cascade
+        /// core, QuestListPage's prerequisite rows); null when the row resolves to no known
+        /// quest — each reader applies its own null policy, which is why this helper stops
+        /// at resolution and does not judge satisfaction.
+        /// </summary>
+        internal static TarkovTask? ResolveRequirementTask(
+            TaskRequirement req, Func<string, TarkovTask?> taskById, Func<string, TarkovTask?> taskByName)
+            => !string.IsNullOrEmpty(req.TaskId) ? taskById(req.TaskId) : taskByName(req.TaskNormalizedName);
+
+        /// <summary>Instance overload for the status engine and the quest-detail UI.</summary>
+        public TarkovTask? ResolveRequirementTask(TaskRequirement req)
+            => ResolveRequirementTask(req, GetTaskById, GetTask);
+
+        /// <summary>
+        /// The mutually exclusive alternatives a completion of <paramref name="task"/> would
+        /// mark Failed: each listed alternative that resolves (by NormalizedName, Id fallback)
+        /// and is neither Done nor already Failed, paired with the key its status is recorded
+        /// under — first non-empty Id, else the raw listed name (the legacy fallback key).
+        /// Shared by ComputeCompletionCascade and ApplyQuestChangesBatchAsync so the two
+        /// auto-fail paths cannot drift; the caller supplies the status view it needs (the
+        /// core's planned-aware EffectiveStatus, the batch's already-mutated GetStatus).
+        /// </summary>
+        internal static List<PlannedQuestChange> PlanAlternativeFailures(
+            TarkovTask task, Func<string, TarkovTask?> taskById, Func<string, TarkovTask?> taskByName,
+            Func<TarkovTask, QuestStatus> status)
+        {
+            var failures = new List<PlannedQuestChange>();
+            if (task.AlternativeQuests == null) return failures;
+
+            foreach (var altQuestName in task.AlternativeQuests)
+            {
+                // Try to find by NormalizedName (current data format) or by Id
+                var altTask = taskByName(altQuestName) ?? taskById(altQuestName);
+                if (altTask == null) continue;
+
+                var altStatus = status(altTask);
+                // Only fail if not already done or failed
+                if (altStatus == QuestStatus.Done || altStatus == QuestStatus.Failed) continue;
+
+                var altId = altTask.Ids?.FirstOrDefault(i => !string.IsNullOrEmpty(i));
+                failures.Add(new PlannedQuestChange(altTask, !string.IsNullOrEmpty(altId) ? altId! : altQuestName));
+            }
+            return failures;
+        }
+
+        /// <summary>
+        /// The read-only lookups <see cref="ComputeCompletionCascade"/> runs against.
+        /// A named payload rather than four positional delegates: TaskById and TaskByName
+        /// have identical types, so a swapped pair would compile and silently resolve
+        /// nothing — every prerequisite would vanish from the plan with no error. Required
+        /// members make each call site name what it passes.
+        /// </summary>
+        internal sealed class CascadeLookups
+        {
+            /// <summary>Quest by database Id — <see cref="GetTaskById"/>.</summary>
+            public required Func<string, TarkovTask?> TaskById { get; init; }
+            /// <summary>Quest by NormalizedName — <see cref="GetTask"/>.</summary>
+            public required Func<string, TarkovTask?> TaskByName { get; init; }
+            /// <summary>Derived quest status — <see cref="GetStatus"/>.</summary>
+            public required Func<TarkovTask, QuestStatus> Status { get; init; }
+            /// <summary>Raw recorded status for a progress key; null when unrecorded.</summary>
+            public required Func<string, QuestStatus?> RecordedStatus { get; init; }
         }
 
         /// <summary>
@@ -750,19 +828,16 @@ namespace TarkovHelper.Services
         /// player didn't do; both follow the alternative-prerequisite precedent (the
         /// user must choose). A single-member "group" behaves as a plain requirement.
         ///
-        /// Internal and delegate-based so unit tests can drive it from plain
-        /// dictionaries: <paramref name="getStatus"/> is the derived
-        /// <see cref="GetStatus"/>; <paramref name="recordedStatus"/> is the raw
-        /// _questProgress lookup, needed because the entry check reads the
+        /// Internal and lookup-driven so unit tests can drive it from plain
+        /// dictionaries: <see cref="CascadeLookups.Status"/> is the derived
+        /// <see cref="GetStatus"/>; <see cref="CascadeLookups.RecordedStatus"/> is the
+        /// raw _questProgress lookup, needed because the entry check reads the
         /// NormalizedName key even for tasks that have an Id, which GetStatus does not.
         /// </summary>
         internal static QuestCompletionPlan ComputeCompletionCascade(
             TarkovTask task,
             bool completePrerequisites,
-            Func<string, TarkovTask?> taskById,
-            Func<string, TarkovTask?> taskByName,
-            Func<TarkovTask, QuestStatus> getStatus,
-            Func<string, QuestStatus?> recordedStatus)
+            CascadeLookups lookups)
         {
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var plannedDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -770,7 +845,7 @@ namespace TarkovHelper.Services
 
             bool IsDoneRecordedOrPlanned(string? key)
                 => !string.IsNullOrEmpty(key)
-                   && (plannedDone.Contains(key) || recordedStatus(key) == QuestStatus.Done);
+                   && (plannedDone.Contains(key) || lookups.RecordedStatus(key) == QuestStatus.Done);
 
             // Status as the old interleaved traversal would have observed it: planned
             // completions count as Done ahead of the real (unmutated) state.
@@ -779,12 +854,15 @@ namespace TarkovHelper.Services
                 var key = ProgressKeyOf(quest);
                 if (!string.IsNullOrEmpty(key) && plannedDone.Contains(key))
                     return QuestStatus.Done;
-                return getStatus(quest);
+                return lookups.Status(quest);
             }
 
             // The prerequisites this completion may auto-complete, resolved from
             // TaskRequirements or — only when TaskRequirements is null — the legacy
             // Previous name list (which always means "must be completed").
+            // This walk stays separate from ArePrerequisitesMet's and QuestListPage's:
+            // their questions differ (satisfaction vs auto-completability vs display;
+            // ArePrerequisitesMet's unresolvable-row policy also differs by GroupId).
             IEnumerable<TarkovTask> AutoCompletablePrerequisites(TarkovTask node)
             {
                 if (node.TaskRequirements != null)
@@ -804,9 +882,7 @@ namespace TarkovHelper.Services
                         // Fail-/Accept-type requirements are not satisfied by completion.
                         if (!RequiresCompletion(req.Status)) continue;
 
-                        var prevTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? taskById(req.TaskId)
-                            : taskByName(req.TaskNormalizedName);
+                        var prevTask = ResolveRequirementTask(req, lookups.TaskById, lookups.TaskByName);
 
                         if (prevTask != null) yield return prevTask;
                     }
@@ -816,7 +892,7 @@ namespace TarkovHelper.Services
                 {
                     foreach (var prevName in node.Previous)
                     {
-                        if (taskByName(prevName) is { } prevTask) yield return prevTask;
+                        if (lookups.TaskByName(prevName) is { } prevTask) yield return prevTask;
                     }
                 }
             }
@@ -855,26 +931,8 @@ namespace TarkovHelper.Services
             Visit(task, completePrerequisites);
 
             // Fail alternative quests of the clicked quest (mutually exclusive)
-            var alternativesToFail = new List<PlannedQuestChange>();
-            if (task.AlternativeQuests != null)
-            {
-                foreach (var altQuestName in task.AlternativeQuests)
-                {
-                    // Try to find by NormalizedName (current data format) or by Id
-                    var altTask = taskByName(altQuestName) ?? taskById(altQuestName);
-                    if (altTask == null) continue;
-
-                    var altStatus = EffectiveStatus(altTask);
-                    // Only fail if not already done or failed
-                    if (altStatus == QuestStatus.Done || altStatus == QuestStatus.Failed) continue;
-
-                    // Fail key: first non-empty Id, else the raw listed name — the
-                    // legacy fallback key the pre-refactor code wrote under.
-                    var altId = altTask.Ids?.FirstOrDefault(i => !string.IsNullOrEmpty(i));
-                    alternativesToFail.Add(new PlannedQuestChange(
-                        altTask, !string.IsNullOrEmpty(altId) ? altId! : altQuestName));
-                }
-            }
+            var alternativesToFail = PlanAlternativeFailures(
+                task, lookups.TaskById, lookups.TaskByName, EffectiveStatus);
 
             // Post-order: when the clicked quest was planned it is necessarily the
             // last completion; when it was skipped (already Done, keyless, or cycled)
@@ -915,8 +973,7 @@ namespace TarkovHelper.Services
 
             foreach (var task in tasks)
             {
-                var taskId = task.Ids?.FirstOrDefault();
-                var taskKey = taskId ?? task.NormalizedName;
+                var taskKey = ProgressKeyOf(task);
 
                 if (string.IsNullOrEmpty(taskKey)) continue;
                 if (!visited.Add(taskKey)) continue;
@@ -928,15 +985,11 @@ namespace TarkovHelper.Services
                     continue;
                 }
 
-                // Skip if already done
-                if (_questProgress.TryGetValue(taskKey, out var currentStatus) && currentStatus == QuestStatus.Done)
-                    continue;
-                if (!string.IsNullOrEmpty(task.NormalizedName) &&
-                    _questProgress.TryGetValue(task.NormalizedName, out var statusByName) && statusByName == QuestStatus.Done)
-                    continue;
+                // Skip if already done (check by both Id and NormalizedName)
+                if (IsRecordedDone(task)) continue;
 
                 _questProgress[taskKey] = QuestStatus.Done;
-                changedQuests.Add((taskId ?? taskKey, task.NormalizedName, QuestStatus.Done));
+                changedQuests.Add((taskKey, task.NormalizedName, QuestStatus.Done));
             }
 
             if (changedQuests.Count > 0)
@@ -958,8 +1011,7 @@ namespace TarkovHelper.Services
 
             foreach (var (task, status) in changes)
             {
-                var taskId = task.Ids?.FirstOrDefault();
-                var taskKey = taskId ?? task.NormalizedName;
+                var taskKey = ProgressKeyOf(task);
 
                 if (string.IsNullOrEmpty(taskKey)) continue;
 
@@ -969,24 +1021,12 @@ namespace TarkovHelper.Services
                         // Complete without recursive save
                         if (CompleteQuestBatchInternal(task, visited, changedItems))
                         {
-                            // Handle alternative quests (mutually exclusive)
-                            if (task.AlternativeQuests != null)
+                            // Fail alternative quests (mutually exclusive) — same planning
+                            // helper as the cascade core, against the already-mutated state.
+                            foreach (var failure in PlanAlternativeFailures(task, GetTaskById, GetTask, GetStatus))
                             {
-                                foreach (var altQuestName in task.AlternativeQuests)
-                                {
-                                    var altTask = GetTask(altQuestName) ?? GetTaskById(altQuestName);
-                                    if (altTask != null)
-                                    {
-                                        var altStatus = GetStatus(altTask);
-                                        if (altStatus != QuestStatus.Done && altStatus != QuestStatus.Failed)
-                                        {
-                                            var altId = altTask.Ids?.FirstOrDefault();
-                                            var altKey = altId ?? altQuestName;
-                                            _questProgress[altKey] = QuestStatus.Failed;
-                                            changedItems.Add((altId ?? altKey, altTask.NormalizedName, QuestStatus.Failed));
-                                        }
-                                    }
-                                }
+                                _questProgress[failure.Key] = QuestStatus.Failed;
+                                changedItems.Add((failure.Key, failure.Quest.NormalizedName, QuestStatus.Failed));
                             }
                         }
                         break;
@@ -995,7 +1035,7 @@ namespace TarkovHelper.Services
                         if (!_questProgress.TryGetValue(taskKey, out var currentStatus) || currentStatus != QuestStatus.Failed)
                         {
                             _questProgress[taskKey] = QuestStatus.Failed;
-                            changedItems.Add((taskId ?? taskKey, task.NormalizedName, QuestStatus.Failed));
+                            changedItems.Add((taskKey, task.NormalizedName, QuestStatus.Failed));
                         }
                         break;
                 }
@@ -1015,21 +1055,16 @@ namespace TarkovHelper.Services
         /// </summary>
         private bool CompleteQuestBatchInternal(TarkovTask task, HashSet<string> visited, List<(string Id, string? NormalizedName, QuestStatus Status)> changedItems)
         {
-            var taskId = task.Ids?.FirstOrDefault();
-            var taskKey = taskId ?? task.NormalizedName;
+            var taskKey = ProgressKeyOf(task);
 
             if (string.IsNullOrEmpty(taskKey)) return false;
             if (!visited.Add(taskKey)) return false;
 
-            // Skip if already done
-            if (_questProgress.TryGetValue(taskKey, out var currentStatus) && currentStatus == QuestStatus.Done)
-                return false;
-            if (!string.IsNullOrEmpty(task.NormalizedName) &&
-                _questProgress.TryGetValue(task.NormalizedName, out var statusByName) && statusByName == QuestStatus.Done)
-                return false;
+            // Skip if already done (check by both Id and NormalizedName)
+            if (IsRecordedDone(task)) return false;
 
             _questProgress[taskKey] = QuestStatus.Done;
-            changedItems.Add((taskId ?? taskKey, task.NormalizedName, QuestStatus.Done));
+            changedItems.Add((taskKey, task.NormalizedName, QuestStatus.Done));
             return true;
         }
 
@@ -1038,8 +1073,7 @@ namespace TarkovHelper.Services
         /// </summary>
         public void FailQuest(TarkovTask task)
         {
-            var taskId = task.Ids?.FirstOrDefault();
-            var taskKey = taskId ?? task.NormalizedName;
+            var taskKey = ProgressKeyOf(task);
 
             if (string.IsNullOrEmpty(taskKey)) return;
 
@@ -1049,7 +1083,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    await _userDataDb.SaveQuestProgressAsync(taskId ?? taskKey, task.NormalizedName, QuestStatus.Failed, ProfileService.Instance.ActiveProfileId);
+                    await _userDataDb.SaveQuestProgressAsync(taskKey, task.NormalizedName, QuestStatus.Failed, ProfileService.Instance.ActiveProfileId);
                 }
                 catch (Exception ex)
                 {
@@ -1064,8 +1098,7 @@ namespace TarkovHelper.Services
         /// </summary>
         public void ResetQuest(TarkovTask task)
         {
-            var taskId = task.Ids?.FirstOrDefault();
-            var taskKey = taskId ?? task.NormalizedName;
+            var taskKey = ProgressKeyOf(task);
 
             if (string.IsNullOrEmpty(taskKey)) return;
 
@@ -1082,7 +1115,7 @@ namespace TarkovHelper.Services
                 try
                 {
                     var profileId = ProfileService.Instance.ActiveProfileId;
-                    await _userDataDb.DeleteQuestProgressAsync(taskId ?? taskKey, profileId);
+                    await _userDataDb.DeleteQuestProgressAsync(taskKey, profileId);
                     // Also delete by NormalizedName for clean migration
                     if (!string.IsNullOrEmpty(task.NormalizedName) && task.NormalizedName != taskKey)
                     {
