@@ -45,10 +45,12 @@ internal sealed class AppDriver : IDisposable
     public static AppDriver Launch(string configDir)
     {
         var dll = AppUnderTest.DllPath!;
+        var appDir = Path.GetDirectoryName(dll)!;
+        RemoveLegacyLanguageOverride(appDir);
         var psi = new ProcessStartInfo
         {
             FileName = "dotnet",
-            WorkingDirectory = Path.GetDirectoryName(dll)!,
+            WorkingDirectory = appDir,
             UseShellExecute = false,
         };
         psi.ArgumentList.Add(dll);
@@ -63,6 +65,11 @@ internal sealed class AppDriver : IDisposable
         // GetClickablePoint then throws on the obscured rows and synthetic clicks
         // land on the toolbox instead of the intended element.
         psi.Environment["TARKOVHELPER_DISABLE_DEBUG_TOOLBOX"] = "1";
+        // Without this the app fetches update.xml over the real network on launch; a
+        // published version newer than the built one flips the header's version chip
+        // (BtnVersionChip/ChipVersion) mid-test, making HeaderE2ETests' chip-state
+        // assertions depend on the release cadence instead of the build under test.
+        psi.Environment["TARKOVHELPER_DISABLE_UPDATE_CHECK"] = "1";
 
         var process = Process.Start(psi)!;
         try
@@ -97,6 +104,22 @@ internal sealed class AppDriver : IDisposable
             Thread.Sleep(250);
         }
         throw new TimeoutException("main window did not appear within 60s");
+    }
+
+    /// <summary>
+    /// Deletes a leftover legacy Data\settings.json next to the app under test.
+    /// TARKOVHELPER_CONFIG_PATH isolates user_data.db but NOT that file: it sits under the
+    /// app base directory, and LocalizationService.LoadSettings runs MigrateFromJsonIfNeeded
+    /// — which writes app.language into the isolated db — BEFORE reading the language back,
+    /// so seeding the db cannot pin it. A stale file from a pre-DB build would flip the app
+    /// under test to KO/JA and break every assertion on rendered text (quest names, the
+    /// cascade dialog's window title and headers). The app deletes it on first launch
+    /// anyway, so removing it here loses nothing.
+    /// </summary>
+    internal static void RemoveLegacyLanguageOverride(string appDir)
+    {
+        var legacy = Path.Combine(appDir, "Data", "settings.json");
+        if (File.Exists(legacy)) File.Delete(legacy);
     }
 
     #region Win32 window control
