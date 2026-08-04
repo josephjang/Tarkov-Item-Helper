@@ -93,11 +93,15 @@ with the failed section rendered in the same red accent the detail panel
 already uses for its mutually exclusive "Other Choices" section, keeping one
 visual language for "this fails quests".
 
-**The Locked-quest hazard is closed by construction, not by special case.** A
-Locked or LevelLocked quest has incomplete prerequisites by definition, so its
-cascade is non-empty and the dialog always appears for it. No per-status rule
-exists to drift out of sync: the misclick that used to silently complete a
-chain now shows "N quests will also be completed" first.
+**The Locked-quest hazard is narrowed by construction, not by special case.**
+No per-status rule exists to drift out of sync: whenever a completion would
+change other quests, the dialog appears, so the misclick that used to silently
+complete a chain now shows "N quests will also be completed" first. The
+boundary is the cascade itself, not the lock icon: a quest that is Locked or
+LevelLocked by a non-prerequisite gate (player level, Scav karma, the DSP
+decode counter) or whose only prerequisite is a mutually exclusive choice the
+cascade refuses to auto-complete still completes one-click — correctly so,
+since completing it changes nothing else.
 
 **Confirmation over undo.** Undo would preserve the one-click flow, but an
 applied cascade fans out immediately — per-quest progress rows are written and
