@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using TarkovHelper.Services;
 
 namespace TarkovHelper.Tests;
@@ -91,6 +92,20 @@ public sealed class UpdateServiceTests
         Assert.Equal(
             "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db",
             DatabaseUpdateService.DATABASE_URL);
+    }
+
+    [Fact]
+    public void Auto_check_disabled_touches_neither_the_timer_nor_the_network()
+    {
+        // Uninitialized instance: _checkTimer and _httpClient are null, so reaching either
+        // effect throws. Surviving the disabled call is the proof the gate short-circuits
+        // before both; the throwing counterpart proves the assertion isn't vacuous.
+        var disabled = (UpdateService)RuntimeHelpers.GetUninitializedObject(typeof(UpdateService));
+        disabled.StartAutoCheck(disabled: true);
+        Assert.Null(disabled.LastCheckTime);
+
+        var enabled = (UpdateService)RuntimeHelpers.GetUninitializedObject(typeof(UpdateService));
+        Assert.Throws<NullReferenceException>(() => enabled.StartAutoCheck(disabled: false));
     }
 
     [Fact]

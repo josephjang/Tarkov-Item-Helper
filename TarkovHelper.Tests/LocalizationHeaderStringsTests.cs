@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using TarkovHelper.Services;
 
 namespace TarkovHelper.Tests;
@@ -46,20 +45,6 @@ public class LocalizationHeaderStringsTests
         "SettingsCurrentVersionFormat", "SettingsUpdateToFormat", "TimeMinutesAgoFormat",
     };
 
-    /// <summary>
-    /// The real constructor opens user_data.db via UserDataDbService; an uninitialized
-    /// instance skips that, and the header string properties only read _currentLanguage.
-    /// </summary>
-    private static LocalizationService CreateWithoutDb(AppLanguage language)
-    {
-        var loc = (LocalizationService)RuntimeHelpers.GetUninitializedObject(typeof(LocalizationService));
-        var field = typeof(LocalizationService)
-            .GetField("_currentLanguage", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(field);
-        field!.SetValue(loc, language);
-        return loc;
-    }
-
     private static string GetString(LocalizationService loc, string key)
     {
         var prop = typeof(LocalizationService).GetProperty(key, BindingFlags.Public | BindingFlags.Instance);
@@ -73,7 +58,7 @@ public class LocalizationHeaderStringsTests
     [InlineData(AppLanguage.JA)]
     public void Every_header_key_is_nonempty_and_not_a_placeholder(AppLanguage language)
     {
-        var loc = CreateWithoutDb(language);
+        var loc = TestLocalization.WithLanguage(language);
         foreach (var key in HeaderKeys)
         {
             var value = GetString(loc, key);
@@ -88,7 +73,7 @@ public class LocalizationHeaderStringsTests
     [InlineData(AppLanguage.JA)]
     public void Format_keys_keep_their_argument_slot(AppLanguage language)
     {
-        var loc = CreateWithoutDb(language);
+        var loc = TestLocalization.WithLanguage(language);
         foreach (var key in FormatKeys)
         {
             Assert.Contains("{0}", GetString(loc, key));
@@ -98,9 +83,9 @@ public class LocalizationHeaderStringsTests
     [Fact]
     public void Tab_labels_are_translated_for_korean_and_japanese()
     {
-        var en = CreateWithoutDb(AppLanguage.EN);
-        var ko = CreateWithoutDb(AppLanguage.KO);
-        var ja = CreateWithoutDb(AppLanguage.JA);
+        var en = TestLocalization.WithLanguage(AppLanguage.EN);
+        var ko = TestLocalization.WithLanguage(AppLanguage.KO);
+        var ja = TestLocalization.WithLanguage(AppLanguage.JA);
 
         // Spot-check that the tab strip actually changes language (DSP/Lv are
         // legitimately language-invariant, so only tabs are asserted here).

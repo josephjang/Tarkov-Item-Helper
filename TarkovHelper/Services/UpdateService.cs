@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Timers;
 using System.Xml.Linq;
+using TarkovHelper.Debug;
 using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services
@@ -84,8 +85,22 @@ namespace TarkovHelper.Services
         /// <summary>
         /// Start automatic update checking
         /// </summary>
-        public void StartAutoCheck()
+        public void StartAutoCheck() => StartAutoCheck(AppEnv.DisableUpdateCheck);
+
+        /// <summary>
+        /// Testable core of <see cref="StartAutoCheck()"/>: when disabled (the e2e
+        /// harness sets TARKOVHELPER_DISABLE_UPDATE_CHECK — see
+        /// <see cref="AppEnv.DisableUpdateCheck"/>), neither the timer nor the initial
+        /// network check is started.
+        /// </summary>
+        internal void StartAutoCheck(bool disabled)
         {
+            if (disabled)
+            {
+                _log.Info("Automatic update check disabled (TARKOVHELPER_DISABLE_UPDATE_CHECK)");
+                return;
+            }
+
             _log.Info($"Starting automatic update check (interval: {CheckIntervalMinutes} minutes)");
             _checkTimer.Start();
 
