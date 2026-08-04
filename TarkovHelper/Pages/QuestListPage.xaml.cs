@@ -1420,22 +1420,21 @@ namespace TarkovHelper.Pages
         /// Completes a quest, confirming first when the completion would cascade —
         /// auto-complete incomplete prerequisites or auto-fail mutually exclusive
         /// alternatives (see feature-quest-complete-cascade-confirm.md). An empty
-        /// cascade keeps the old one-click completion.
+        /// cascade keeps the old one-click completion. The confirmed cascade is
+        /// applied verbatim — not recomputed — so what the dialog listed is exactly
+        /// what changes, even if a background log-sync event landed while the modal
+        /// was open.
         /// </summary>
         private void CompleteQuestWithConfirmation(TarkovTask task)
         {
             var cascade = _progressService.GetCompletionCascade(task);
-            if (!cascade.IsEmpty)
+            if (!cascade.IsEmpty &&
+                !QuestCompleteConfirmDialog.Confirm(Window.GetWindow(this), task, cascade))
             {
-                var dialog = new QuestCompleteConfirmDialog(task, cascade)
-                {
-                    Owner = Window.GetWindow(this)
-                };
-                dialog.ShowDialog();
-                if (!dialog.Confirmed) return;
+                return;
             }
 
-            _progressService.CompleteQuest(task, true);
+            _progressService.ApplyCompletionCascade(cascade);
         }
 
         private void BtnWiki_Click(object sender, RoutedEventArgs e)

@@ -151,6 +151,14 @@ namespace TarkovHelper.Models
         public List<string>? AlternativeQuests { get; set; }
 
         /// <summary>
+        /// Whether this quest is a mutually exclusive choice (completing one of the
+        /// alternatives fails the others). The single definition shared by the
+        /// status engine, the completion-cascade core, and the sync paths.
+        /// </summary>
+        [JsonIgnore]
+        public bool HasAlternatives => AlternativeQuests is { Count: > 0 };
+
+        /// <summary>
         /// Task requirements with status conditions from tarkov.dev API
         /// Each requirement specifies which status(es) the prerequisite task must have
         /// </summary>

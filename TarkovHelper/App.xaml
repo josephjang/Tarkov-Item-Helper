@@ -41,6 +41,10 @@
         <Color x:Key="ErrorColor">#ef5350</Color>
         <!-- Dimmed "inactive" indicator (status dots when off), darker than TextSecondary -->
         <Color x:Key="NeutralColor">#757575</Color>
+        <!-- Mutually exclusive quests ("Other Choices" section, cascade-confirm FAILED
+             section): the semantic "completing this fails other quests" accent -->
+        <Color x:Key="AlternativeQuestColor">#FF5722</Color>
+        <Color x:Key="AlternativeQuestBackground">#44FF5722</Color>
         <Color x:Key="BackgroundHover">#4E4E52</Color>
         <Color x:Key="BackgroundPressed">#5E5E62</Color>
 
@@ -57,6 +61,8 @@
         <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
         <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}"/>
         <SolidColorBrush x:Key="NeutralBrush" Color="{StaticResource NeutralColor}"/>
+        <SolidColorBrush x:Key="AlternativeQuestBrush" Color="{StaticResource AlternativeQuestColor}"/>
+        <SolidColorBrush x:Key="AlternativeQuestBackgroundBrush" Color="{StaticResource AlternativeQuestBackground}"/>
         <SolidColorBrush x:Key="BackgroundHoverBrush" Color="{StaticResource BackgroundHover}"/>
         <SolidColorBrush x:Key="BackgroundPressedBrush" Color="{StaticResource BackgroundPressed}"/>
 

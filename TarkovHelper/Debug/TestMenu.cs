@@ -13,11 +13,6 @@ namespace TarkovHelper.Debug;
 public static class TestMenu
 {
     /// <summary>
-    /// MainWindow 인스턴스 (Toolbox에서 주입)
-    /// </summary>
-    public static Window? MainWindow { get; set; }
-
-    /// <summary>
     /// Health Care Privacy 퀘스트 동기화 디버그
     /// 로그 파일을 분석하여 왜 Part 3, 4가 Auto Complete 되는지 확인
     /// </summary>

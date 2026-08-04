@@ -9,19 +9,19 @@ namespace TarkovHelper.Tests;
 /// Unit guards for QuestProgressService.ComputeCompletionCascade — the pure
 /// traversal core shared by CompleteQuest and GetCompletionCascade (see
 /// feature-quest-complete-cascade-confirm.spec.md). The tests encode the
-/// pre-refactor CompleteQuest semantics, including the obscure ones (dual-key
-/// done-check, TaskRequirements-over-Previous precedence, planned-write
-/// visibility), so the shared-core refactor cannot silently change completion
-/// behavior. Also guards the QuestCompleteConfirmDialog localization strings.
+/// pre-refactor CompleteQuest semantics that were kept (dual-key done-check,
+/// TaskRequirements-over-Previous precedence, planned-write visibility) plus
+/// the requirement semantics the review corrected: Fail-/Accept-type
+/// requirements and multi-member OR groups are never auto-completed (the
+/// pre-refactor code over-completed both). Also guards the plan shape the
+/// apply step writes verbatim and the QuestCompleteConfirmDialog localization
+/// strings.
 /// </summary>
 public sealed class QuestCompletionCascadeTests
 {
     /// <summary>
     /// Dictionary-backed stand-in for the service's lookups: tasks keyed by Id and
-    /// NormalizedName plus a raw recorded-progress map. GetStatus mirrors the
-    /// service's recorded-state read order (Id first; NormalizedName only when the
-    /// task has no Id) and reports Active otherwise — Done/Failed vs anything else
-    /// is the only distinction the cascade gates make.
+    /// NormalizedName plus a raw recorded-progress map.
     /// </summary>
     private sealed class QuestWorld
     {
@@ -31,45 +31,68 @@ public sealed class QuestCompletionCascadeTests
         public Dictionary<string, QuestStatus> Recorded { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public TarkovTask Add(string id, string name)
+            => AddWithIds(string.IsNullOrEmpty(id) ? new List<string>() : new List<string> { id }, name);
+
+        /// <summary>Registers a task with an explicit Ids list (e.g. to model an empty-string Id anomaly).</summary>
+        public TarkovTask AddWithIds(List<string> ids, string name)
         {
             var task = new TarkovTask
             {
-                Ids = string.IsNullOrEmpty(id) ? new List<string>() : new List<string> { id },
+                Ids = ids,
                 Name = name,
                 NormalizedName = name,
                 Trader = "Prapor",
             };
-            if (!string.IsNullOrEmpty(id)) _byId[id] = task;
+            foreach (var id in ids.Where(i => !string.IsNullOrEmpty(i))) _byId[id] = task;
             _byName[name] = task;
             return task;
         }
 
+        /// <summary>
+        /// Mirrors the real QuestProgressService.GetStatus recorded-state read order:
+        /// the Id key is consulted first, and the NormalizedName key whenever the Id
+        /// lookup MISSES — including for tasks that do have an Id. Only a recorded
+        /// Done/Failed short-circuits; everything else reports Active, which is the
+        /// only distinction the cascade gates make.
+        /// </summary>
         public QuestStatus GetStatus(TarkovTask task)
         {
             var id = task.Ids?.FirstOrDefault();
-            if (!string.IsNullOrEmpty(id))
+            if (!string.IsNullOrEmpty(id) && Recorded.TryGetValue(id, out var byId))
             {
-                if (Recorded.TryGetValue(id, out var byId)) return byId;
+                if (byId is QuestStatus.Done or QuestStatus.Failed) return byId;
             }
             else if (task.NormalizedName != null && Recorded.TryGetValue(task.NormalizedName, out var byName))
             {
-                return byName;
+                if (byName is QuestStatus.Done or QuestStatus.Failed) return byName;
             }
             return QuestStatus.Active;
         }
 
-        public (List<TarkovTask> ToComplete, List<(TarkovTask Task, string ListedName)> ToFail) Cascade(
-            TarkovTask task, bool completePrerequisites = true)
+        public QuestCompletionPlan Plan(TarkovTask task, bool completePrerequisites = true)
             => QuestProgressService.ComputeCompletionCascade(
                 task, completePrerequisites,
                 id => _byId.GetValueOrDefault(id),
                 name => _byName.GetValueOrDefault(name),
                 GetStatus,
                 key => Recorded.TryGetValue(key, out var status) ? status : null);
+
+        public (List<TarkovTask> ToComplete, List<(TarkovTask Task, string Key)> ToFail) Cascade(
+            TarkovTask task, bool completePrerequisites = true)
+        {
+            var plan = Plan(task, completePrerequisites);
+            return (plan.CompletionsInOrder.Select(c => c.Quest).ToList(),
+                    plan.AlternativesToFail.Select(a => (a.Quest, a.Key)).ToList());
+        }
     }
 
-    private static TaskRequirement RequireById(TarkovTask task)
-        => new() { TaskId = task.Ids!.First() };
+    private static TaskRequirement RequireById(TarkovTask task, string? requirementType = null, int groupId = 0)
+        => new()
+        {
+            TaskId = task.Ids!.First(),
+            Status = requirementType == null ? null : new List<string> { requirementType },
+            GroupId = groupId,
+        };
 
     private static TaskRequirement RequireByName(TarkovTask task)
         => new() { TaskNormalizedName = task.NormalizedName! };
@@ -169,7 +192,9 @@ public sealed class QuestCompletionCascadeTests
 
         var entry = Assert.Single(toFail);
         Assert.Same(active, entry.Task);
-        Assert.Equal("alt-active", entry.ListedName);
+        // The fail key prefers the task's Id; the listed name is only the
+        // fallback for id-less legacy tasks (covered separately below).
+        Assert.Equal("x", entry.Key);
     }
 
     [Fact]
@@ -223,10 +248,12 @@ public sealed class QuestCompletionCascadeTests
         var prereq = world.Add("p1", "migrated-prereq");
         var quest = world.Add("q1", "quest-on-migrated");
         quest.TaskRequirements = new List<TaskRequirement> { RequireById(prereq) };
-        // Legacy migration shape: progress recorded under NormalizedName although the
-        // task now has an Id. GetStatus misses it (it reads the Id key), but the
-        // traversal's node-entry check reads both keys — the quest must not be
-        // re-completed.
+        // Legacy migration shape: an Active row sits under the Id key while the Done
+        // row sits under the NormalizedName. GetStatus resolves the Id hit (Active,
+        // no short-circuit) and never reads the name key — only the traversal's
+        // node-entry check does, and it must see the name-keyed Done row and leave
+        // the prerequisite out of the plan.
+        world.Recorded["p1"] = QuestStatus.Active;
         world.Recorded["migrated-prereq"] = QuestStatus.Done;
 
         var (toComplete, _) = world.Cascade(quest);
@@ -284,7 +311,7 @@ public sealed class QuestCompletionCascadeTests
     }
 
     [Fact]
-    public void Preview_is_pure_and_repeatable()
+    public void Preview_is_repeatable()
     {
         var world = new QuestWorld();
         var a = world.Add("a", "pure-a");
@@ -297,12 +324,306 @@ public sealed class QuestCompletionCascadeTests
         var first = world.Cascade(b);
         var second = world.Cascade(b);
 
-        // Nothing recorded changed, and a second run sees the same world.
-        Assert.Equal(new[] { ("seed", QuestStatus.Failed) },
-            world.Recorded.Select(kv => (kv.Key, kv.Value)));
+        // A second run over the unchanged world plans the same result. (The core
+        // cannot mutate the world through its read-only delegates by construction;
+        // the instance-level purity guard for GetCompletionCascade lives in
+        // GetCompletionCascade_lists_prerequisites_and_mutates_nothing.)
         Assert.Equal(first.ToComplete, second.ToComplete);
         Assert.Equal(first.ToFail, second.ToFail);
     }
+
+    #region Requirement semantics (Status / GroupId — mirrored from ArePrerequisitesMet)
+
+    [Fact]
+    public void Fail_type_prerequisite_is_never_auto_completed()
+    {
+        var world = new QuestWorld();
+        var mustFail = world.Add("hw", "must-fail-prereq");
+        var quest = world.Add("q", "requires-a-failure");
+        // The game requires the prerequisite to be FAILED — completing it for the
+        // player would be the exact opposite of the required state.
+        quest.TaskRequirements = new List<TaskRequirement> { RequireById(mustFail, "Fail") };
+
+        var (toComplete, toFail) = world.Cascade(quest);
+
+        Assert.Equal(new[] { quest }, toComplete);
+        Assert.Empty(toFail);
+    }
+
+    [Fact]
+    public void Accept_type_prerequisite_is_never_auto_completed()
+    {
+        var world = new QuestWorld();
+        var mustStart = world.Add("p", "must-start-prereq");
+        var quest = world.Add("q", "requires-a-start");
+        // The prerequisite only needs to be STARTED; marking it fully Done would
+        // over-record progress the player never made.
+        quest.TaskRequirements = new List<TaskRequirement> { RequireById(mustStart, "Accept") };
+
+        var (toComplete, _) = world.Cascade(quest);
+
+        Assert.Equal(new[] { quest }, toComplete);
+    }
+
+    [Fact]
+    public void Multi_member_or_group_is_never_auto_completed()
+    {
+        var world = new QuestWorld();
+        var branchA = world.Add("a", "or-branch-a");
+        var branchB = world.Add("b", "or-branch-b");
+        var quest = world.Add("q", "either-or-quest");
+        // Any ONE of the group satisfies the requirement — the user must choose
+        // which branch they actually did; completing both over-records.
+        quest.TaskRequirements = new List<TaskRequirement>
+        {
+            RequireById(branchA, "Complete", groupId: 1),
+            RequireById(branchB, "Complete", groupId: 1),
+        };
+
+        var (toComplete, _) = world.Cascade(quest);
+
+        Assert.Equal(new[] { quest }, toComplete);
+    }
+
+    [Fact]
+    public void Or_group_subtrees_are_skipped_with_the_group()
+    {
+        var world = new QuestWorld();
+        var deep = world.Add("deep", "behind-or-branch");
+        var branchA = world.Add("a", "or-a");
+        var branchB = world.Add("b", "or-b");
+        var quest = world.Add("q", "or-quest");
+        branchA.TaskRequirements = new List<TaskRequirement> { RequireById(deep) };
+        quest.TaskRequirements = new List<TaskRequirement>
+        {
+            RequireById(branchA, groupId: 2),
+            RequireById(branchB, groupId: 2),
+        };
+
+        var (toComplete, _) = world.Cascade(quest);
+
+        Assert.Equal(new[] { quest }, toComplete);
+    }
+
+    [Fact]
+    public void Single_member_group_cascades_like_a_plain_requirement()
+    {
+        var world = new QuestWorld();
+        var prereq = world.Add("p", "lone-group-prereq");
+        var quest = world.Add("q", "lone-group-quest");
+        // A one-member "group" is just a requirement (ArePrerequisitesMet treats it
+        // the same); the e2e data queries rely on single-requirement quests cascading.
+        quest.TaskRequirements = new List<TaskRequirement> { RequireById(prereq, "Complete", groupId: 1) };
+
+        var (toComplete, _) = world.Cascade(quest);
+
+        Assert.Equal(new[] { prereq, quest }, toComplete);
+    }
+
+    [Fact]
+    public void Mixed_requirements_cascade_only_the_plain_completable_ones()
+    {
+        var world = new QuestWorld();
+        var plain = world.Add("c", "plain-complete");
+        var mustFail = world.Add("f", "fail-type");
+        var branchA = world.Add("a", "mix-or-a");
+        var branchB = world.Add("b", "mix-or-b");
+        var quest = world.Add("q", "mixed-quest");
+        quest.TaskRequirements = new List<TaskRequirement>
+        {
+            RequireById(plain),
+            RequireById(mustFail, "Fail"),
+            RequireById(branchA, "Complete", groupId: 1),
+            RequireById(branchB, "Complete", groupId: 1),
+        };
+
+        var (toComplete, _) = world.Cascade(quest);
+
+        Assert.Equal(new[] { plain, quest }, toComplete);
+    }
+
+    #endregion
+
+    #region completePrerequisites: false (the log-sync call mode)
+
+    [Fact]
+    public void Without_prerequisites_flag_only_the_clicked_quest_completes()
+    {
+        var world = new QuestWorld();
+        var prereq = world.Add("p", "flagged-prereq");
+        var quest = world.Add("q", "flagged-quest");
+        quest.TaskRequirements = new List<TaskRequirement> { RequireById(prereq) };
+
+        var (toComplete, _) = world.Cascade(quest, completePrerequisites: false);
+
+        Assert.Equal(new[] { quest }, toComplete);
+    }
+
+    [Fact]
+    public void Without_prerequisites_flag_alternatives_still_fail()
+    {
+        var world = new QuestWorld();
+        var alt = world.Add("x", "flagged-alt");
+        var quest = world.Add("q", "flagged-alt-quest");
+        quest.AlternativeQuests = new List<string> { alt.NormalizedName! };
+
+        var (toComplete, toFail) = world.Cascade(quest, completePrerequisites: false);
+
+        Assert.Equal(new[] { quest }, toComplete);
+        Assert.Same(alt, Assert.Single(toFail).Task);
+    }
+
+    #endregion
+
+    #region Plan shape (what ApplyCompletionCascade writes verbatim)
+
+    [Fact]
+    public void Plan_reports_the_clicked_quest_separately_from_prerequisites()
+    {
+        var world = new QuestWorld();
+        var prereq = world.Add("a", "plan-prereq");
+        var quest = world.Add("b", "plan-quest");
+        quest.TaskRequirements = new List<TaskRequirement> { RequireById(prereq) };
+
+        var plan = world.Plan(quest);
+
+        Assert.Equal(new[] { prereq }, plan.Prerequisites.Select(p => p.Quest));
+        Assert.NotNull(plan.ClickedQuest);
+        Assert.Same(quest, plan.ClickedQuest!.Value.Quest);
+        Assert.Equal("b", plan.ClickedQuest.Value.Key);
+        Assert.Equal(new[] { prereq, quest }, plan.CompletionsInOrder.Select(c => c.Quest));
+    }
+
+    [Fact]
+    public void Plan_has_no_clicked_entry_when_the_quest_is_already_done()
+    {
+        var world = new QuestWorld();
+        var quest = world.Add("q", "done-plan-quest");
+        var alt = world.Add("x", "done-plan-alt");
+        quest.AlternativeQuests = new List<string> { alt.NormalizedName! };
+        world.Recorded["q"] = QuestStatus.Done;
+
+        var plan = world.Plan(quest);
+
+        Assert.Null(plan.ClickedQuest);
+        Assert.Empty(plan.CompletionsInOrder);
+        Assert.Empty(plan.Prerequisites);
+        Assert.Same(alt, Assert.Single(plan.AlternativesToFail).Quest);
+    }
+
+    [Fact]
+    public void Planned_key_falls_back_to_normalized_name_when_the_first_id_is_empty()
+    {
+        var world = new QuestWorld();
+        // Data anomaly: an Ids list whose first entry is the empty string must not
+        // become the literal progress key "" (nor abort the completion silently).
+        var quest = world.AddWithIds(new List<string> { "" }, "empty-id-quest");
+
+        var plan = world.Plan(quest);
+
+        var completion = Assert.Single(plan.CompletionsInOrder);
+        Assert.Equal("empty-id-quest", completion.Key);
+    }
+
+    [Fact]
+    public void Alternative_fail_key_uses_the_listed_name_for_id_less_tasks()
+    {
+        var world = new QuestWorld();
+        var alt = world.Add("", "legacy-alt");
+        var quest = world.Add("q", "legacy-alt-quest");
+        quest.AlternativeQuests = new List<string> { alt.NormalizedName! };
+
+        var plan = world.Plan(quest);
+
+        var failure = Assert.Single(plan.AlternativesToFail);
+        Assert.Same(alt, failure.Quest);
+        Assert.Equal("legacy-alt", failure.Key);
+    }
+
+    #endregion
+
+    #region GetCompletionCascade (instance preview + purity)
+
+    /// <summary>
+    /// Uninitialized-instance service (same pattern as CreateWithoutDb below): the
+    /// private ctor's ProfileService subscription and the DB load are skipped and
+    /// the lookup fields are seeded directly, so the public preview entry point —
+    /// GetCompletionCascade and QuestCompletionCascade.IsEmpty, the actual
+    /// dialog-or-no-dialog decision — is exercised for real.
+    /// </summary>
+    private static QuestProgressService CreateServiceWith(params TarkovTask[] tasks)
+    {
+        var service = (QuestProgressService)RuntimeHelpers.GetUninitializedObject(typeof(QuestProgressService));
+        void Set(string field, object value)
+        {
+            var f = typeof(QuestProgressService).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.True(f != null, $"QuestProgressService has no field '{field}'");
+            f!.SetValue(service, value);
+        }
+
+        var byId = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+        var byName = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+        foreach (var task in tasks)
+        {
+            foreach (var id in task.Ids ?? new List<string>())
+            {
+                if (!string.IsNullOrEmpty(id)) byId[id] = task;
+            }
+            if (task.NormalizedName != null) byName[task.NormalizedName] = task;
+        }
+
+        Set("_questProgress", new Dictionary<string, QuestStatus>(StringComparer.OrdinalIgnoreCase));
+        Set("_tasksById", byId);
+        Set("_tasksByNormalizedName", byName);
+        Set("_tasksByBsgId", new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase));
+        Set("_allTasks", tasks.ToList());
+        return service;
+    }
+
+    private static Dictionary<string, QuestStatus> RecordedProgressOf(QuestProgressService service)
+        => (Dictionary<string, QuestStatus>)typeof(QuestProgressService)
+            .GetField("_questProgress", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(service)!;
+
+    private static TarkovTask NewTask(string id, string name) => new()
+    {
+        Ids = new List<string> { id },
+        Name = name,
+        NormalizedName = name,
+        Trader = "Prapor",
+    };
+
+    [Fact]
+    public void GetCompletionCascade_is_empty_for_a_standalone_quest()
+    {
+        var quest = NewTask("s1", "instance-standalone");
+        var service = CreateServiceWith(quest);
+
+        var cascade = service.GetCompletionCascade(quest);
+
+        Assert.True(cascade.IsEmpty);
+        Assert.Empty(cascade.PrerequisitesToComplete);
+        Assert.Empty(cascade.AlternativesToFail);
+    }
+
+    [Fact]
+    public void GetCompletionCascade_lists_prerequisites_and_mutates_nothing()
+    {
+        var prereq = NewTask("p1", "instance-prereq");
+        var quest = NewTask("q1", "instance-quest");
+        quest.TaskRequirements = new List<TaskRequirement> { new() { TaskId = "p1" } };
+        var service = CreateServiceWith(prereq, quest);
+
+        var cascade = service.GetCompletionCascade(quest);
+
+        Assert.False(cascade.IsEmpty);
+        // The clicked quest itself is excluded from the preview list.
+        Assert.Equal(new[] { prereq }, cascade.PrerequisitesToComplete);
+        // The preview is genuinely side-effect-free on recorded progress.
+        Assert.Empty(RecordedProgressOf(service));
+    }
+
+    #endregion
 
     #region Dialog localization strings
 
