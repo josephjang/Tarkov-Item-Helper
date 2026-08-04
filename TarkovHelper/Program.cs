@@ -20,11 +20,7 @@ public class Program
         // see AppEnv.DisableDebugToolbox)
         if (AppEnv.IsDebugMode && !AppEnv.DisableDebugToolbox)
         {
-            TestMenu.MainWindow = mainWindow;
-            var toolbox = new ToolboxWindow
-            {
-
-            };
+            var toolbox = new ToolboxWindow();
             mainWindow.Loaded += (s, e) => {
                 toolbox.Owner = mainWindow;
                 toolbox.Show();

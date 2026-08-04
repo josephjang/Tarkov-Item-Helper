@@ -17,12 +17,25 @@ public partial class QuestCompleteConfirmDialog : Window
     private readonly LocalizationService _loc = LocalizationService.Instance;
 
     /// <summary>
-    /// True only when the user clicked Confirm; Cancel, the X button, and any other
-    /// close path leave it false, so closing the dialog never applies anything.
+    /// True only when the user clicked Confirm; Cancel, the X button, Escape, and
+    /// any other close path leave it false, so closing the dialog never applies
+    /// anything.
     /// </summary>
     public bool Confirmed { get; private set; }
 
-    public QuestCompleteConfirmDialog(TarkovTask task, QuestCompletionCascade cascade)
+    /// <summary>
+    /// Shows the confirmation modal (the construct/Owner/ShowDialog/read-result
+    /// protocol lives here, matching the other Windows/ dialogs' static factories)
+    /// and returns whether the user confirmed applying <paramref name="cascade"/>.
+    /// </summary>
+    public static bool Confirm(Window? owner, TarkovTask task, QuestCompletionCascade cascade)
+    {
+        var dialog = new QuestCompleteConfirmDialog(task, cascade) { Owner = owner };
+        dialog.ShowDialog();
+        return dialog.Confirmed;
+    }
+
+    private QuestCompleteConfirmDialog(TarkovTask task, QuestCompletionCascade cascade)
     {
         InitializeComponent();
 
@@ -65,9 +78,8 @@ public partial class QuestCompleteConfirmDialog : Window
         BtnCascadeConfirm.Content = _loc.CascadeConfirmButton;
     }
 
-    private void BtnCascadeClose_Click(object sender, RoutedEventArgs e) => Close();
-
-    private void BtnCascadeCancel_Click(object sender, RoutedEventArgs e) => Close();
+    /// <summary>Shared dismiss path: the X button, Cancel, and Escape (via IsCancel).</summary>
+    private void BtnCascadeDismiss_Click(object sender, RoutedEventArgs e) => Close();
 
     private void BtnCascadeConfirm_Click(object sender, RoutedEventArgs e)
     {

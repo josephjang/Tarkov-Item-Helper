@@ -16,7 +16,13 @@ namespace TarkovHelper.Services
             ProfileService.Instance.ActiveProfileChanged += (_, _) => _ = ReloadForProfileAsync();
         }
 
-        private Dictionary<string, QuestStatus> _questProgress = new();
+        // OrdinalIgnoreCase to match every other quest-key container (the task lookup
+        // dictionaries, the traversal's visited/planned sets, and the dictionary
+        // UserDataDbService.LoadQuestProgressAsync builds — whose comparer used to be
+        // silently dropped when its rows were copied in here): stored key casing was
+        // never canonical (legacy V2 data compared NormalizedNames case-insensitively),
+        // so a case-drifted key must not hide a recorded Done/Failed status.
+        private readonly Dictionary<string, QuestStatus> _questProgress = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, TarkovTask> _tasksByNormalizedName = new();
         private Dictionary<string, TarkovTask> _tasksByBsgId = new();
         private Dictionary<string, TarkovTask> _tasksById = new();
@@ -209,13 +215,7 @@ namespace TarkovHelper.Services
         /// Check if a task has alternative quests (mutually exclusive choices)
         /// These quests should not be auto-completed as user must choose one
         /// </summary>
-        public bool HasAlternativeQuests(TarkovTask task) => HasAlternatives(task);
-
-        /// <summary>Static twin of <see cref="HasAlternativeQuests"/> for the pure cascade core.</summary>
-        private static bool HasAlternatives(TarkovTask task)
-        {
-            return task.AlternativeQuests != null && task.AlternativeQuests.Count > 0;
-        }
+        public bool HasAlternativeQuests(TarkovTask task) => task.HasAlternatives;
 
         /// <summary>
         /// Get all alternative quest groups (for sync selection UI)
@@ -618,27 +618,48 @@ namespace TarkovHelper.Services
             // Compute the full plan first, then apply it. The decision logic lives in
             // ComputeCompletionCascade, shared with GetCompletionCascade so the
             // confirmation preview cannot drift from what actually happens here.
-            var (questsToComplete, alternativesToFail) = ComputeCompletionCascade(
+            var plan = ComputeCompletionCascade(
                 task, completePrerequisites, GetTaskById, GetTask, GetStatus, GetRecordedStatus);
 
+            ApplyCompletionPlan(plan);
+        }
+
+        /// <summary>
+        /// Applies a cascade the user already confirmed in QuestCompleteConfirmDialog
+        /// (or an empty-cascade preview from the one-click path). The plan captured by
+        /// <see cref="GetCompletionCascade"/> is written verbatim — never recomputed —
+        /// so the quests the dialog listed are exactly the quests whose progress
+        /// changes, even when background log-sync events altered other state while
+        /// the modal was open.
+        /// </summary>
+        public void ApplyCompletionCascade(QuestCompletionCascade cascade)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[QuestProgressService] ApplyCompletionCascade: {cascade.Plan.CompletionsInOrder.Count} completions, {cascade.Plan.AlternativesToFail.Count} failures");
+            ApplyCompletionPlan(cascade.Plan);
+        }
+
+        /// <summary>
+        /// Writes a computed plan into progress state: each planned quest Done, each
+        /// planned alternative Failed, then one batch save and one ProgressChanged —
+        /// the same write order and keys the pre-refactor interleaved code produced.
+        /// </summary>
+        private void ApplyCompletionPlan(QuestCompletionPlan plan)
+        {
             var changedQuests = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
 
-            foreach (var quest in questsToComplete)
+            foreach (var completion in plan.CompletionsInOrder)
             {
-                var id = quest.Ids?.FirstOrDefault();
-                var key = id ?? quest.NormalizedName!; // core only plans quests with a non-empty key
-                _questProgress[key] = QuestStatus.Done;
-                changedQuests.Add((id ?? key, quest.NormalizedName, QuestStatus.Done));
+                _questProgress[completion.Key] = QuestStatus.Done;
+                changedQuests.Add((completion.Key, completion.Quest.NormalizedName, QuestStatus.Done));
             }
 
             // Fail alternative quests (mutually exclusive)
-            foreach (var (altTask, listedName) in alternativesToFail)
+            foreach (var failure in plan.AlternativesToFail)
             {
-                var altId = altTask.Ids?.FirstOrDefault();
-                var altKey = altId ?? listedName;
-                _questProgress[altKey] = QuestStatus.Failed;
-                changedQuests.Add((altId ?? altKey, altTask.NormalizedName, QuestStatus.Failed));
-                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Auto-failed alternative quest: {altKey} ({altTask.Name})");
+                _questProgress[failure.Key] = QuestStatus.Failed;
+                changedQuests.Add((failure.Key, failure.Quest.NormalizedName, QuestStatus.Failed));
+                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Auto-failed alternative quest: {failure.Key} ({failure.Quest.Name})");
             }
 
             // Save and notify only once after all cascade changes
@@ -661,25 +682,16 @@ namespace TarkovHelper.Services
         /// completePrerequisites: true, as both quest-list buttons call it): which
         /// incomplete prerequisites would be auto-completed and which mutually
         /// exclusive alternatives auto-failed. Runs the same traversal core
-        /// CompleteQuest applies, so preview and apply cannot disagree. Used by
-        /// QuestListPage to decide whether to show QuestCompleteConfirmDialog.
+        /// CompleteQuest applies, and carries the resulting plan so
+        /// <see cref="ApplyCompletionCascade"/> can write it verbatim on confirm.
+        /// Used by QuestListPage to decide whether to show QuestCompleteConfirmDialog.
         /// </summary>
         public QuestCompletionCascade GetCompletionCascade(TarkovTask task)
         {
-            var (questsToComplete, alternativesToFail) = ComputeCompletionCascade(
+            var plan = ComputeCompletionCascade(
                 task, completePrerequisites: true, GetTaskById, GetTask, GetStatus, GetRecordedStatus);
 
-            // The clicked quest itself (post-order: always the last planned entry) is
-            // not part of the *cascade* — the preview lists only the other quests.
-            var taskKey = task.Ids?.FirstOrDefault() ?? task.NormalizedName;
-            var prerequisites = questsToComplete
-                .Where(q => !string.Equals(
-                    q.Ids?.FirstOrDefault() ?? q.NormalizedName, taskKey, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            return new QuestCompletionCascade(
-                prerequisites,
-                alternativesToFail.Select(a => a.Task).ToList());
+            return new QuestCompletionCascade(plan);
         }
 
         /// <summary>Raw recorded progress for a key (quest Id or NormalizedName); null when unrecorded.</summary>
@@ -687,23 +699,56 @@ namespace TarkovHelper.Services
             => _questProgress.TryGetValue(key, out var status) ? status : null;
 
         /// <summary>
+        /// A requirement whose Status list names "complete" — or names nothing, the
+        /// legacy default (see <see cref="IsStatusSatisfied"/>) — is one the game
+        /// satisfies by completing the prerequisite. Fail- and Accept/Start-type
+        /// requirements are satisfied by other player actions, so the completion
+        /// cascade must never auto-complete their targets.
+        /// </summary>
+        private static bool RequiresCompletion(List<string>? requiredStatuses)
+            => requiredStatuses == null || requiredStatuses.Count == 0
+               || requiredStatuses.Any(s => string.Equals(s, "complete", StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
+        /// The progress key a quest is recorded and written under: first non-empty
+        /// Ids entry, else NormalizedName; null/empty when the task carries neither.
+        /// (An empty-string Id — a data anomaly — must fall through to the name, not
+        /// become the literal key "".)
+        /// </summary>
+        private static string? ProgressKeyOf(TarkovTask quest)
+        {
+            var id = quest.Ids?.FirstOrDefault(i => !string.IsNullOrEmpty(i));
+            return !string.IsNullOrEmpty(id) ? id : quest.NormalizedName;
+        }
+
+        /// <summary>
         /// Pure decision core shared by <see cref="CompleteQuest"/> and
-        /// <see cref="GetCompletionCascade"/>: computes which quests completing
-        /// <paramref name="task"/> would newly mark Done (post-order — prerequisites
-        /// before dependents, the clicked quest last unless it is already Done) and
-        /// which of its alternatives would be marked Failed, mutating nothing.
+        /// <see cref="GetCompletionCascade"/>: computes the ordered plan of quests
+        /// completing <paramref name="task"/> would newly mark Done (post-order —
+        /// prerequisites before dependents, the clicked quest last when it is planned
+        /// at all) and the alternatives it would mark Failed, mutating nothing.
         ///
-        /// Rules mirrored from the pre-refactor CompleteQuestInternalOptimized: a
-        /// visited set keyed by first-Id-else-NormalizedName prevents cycles; a quest
-        /// already recorded Done under its key or its NormalizedName is skipped;
-        /// prerequisites come from TaskRequirements (by Id, name fallback per entry)
-        /// or, only when TaskRequirements is null, the legacy Previous name list; a
-        /// prerequisite that itself has AlternativeQuests is skipped entirely, subtree
-        /// included (the user must choose which alternative to complete); alternatives
-        /// already Done or Failed are left alone. The old code wrote Done into
+        /// Traversal rules: a visited set keyed by first-Id-else-NormalizedName
+        /// prevents cycles; a quest already recorded Done under its key or its
+        /// NormalizedName is skipped; prerequisites come from TaskRequirements (by
+        /// Id, name fallback per entry) or, only when TaskRequirements is null, the
+        /// legacy Previous name list; a prerequisite that itself has
+        /// AlternativeQuests is skipped entirely, subtree included (the user must
+        /// choose which alternative to complete); alternatives already Done or
+        /// Failed are left alone. The pre-refactor code wrote Done into
         /// _questProgress mid-traversal and later gates read those writes — the
-        /// plannedDone set reproduces that, so e.g. an alternative the cascade itself
-        /// completes is not also failed.
+        /// plannedDone set reproduces that, so e.g. an alternative the cascade
+        /// itself completes is not also failed.
+        ///
+        /// Requirement semantics mirror <see cref="ArePrerequisitesMet"/>'s reading
+        /// of the same rows (the pre-refactor traversal ignored both fields and
+        /// over-completed): a requirement satisfied by something other than
+        /// completing its target — Fail- or Accept/Start-type (<see
+        /// cref="RequiresCompletion"/>) — is never auto-completed, and a multi-member
+        /// OR group (GroupId &gt; 0, any one member satisfies) is never auto-completed
+        /// either, because completing every branch of an either-or records quests the
+        /// player didn't do; both follow the alternative-prerequisite precedent (the
+        /// user must choose). A single-member "group" behaves as a plain requirement.
         ///
         /// Internal and delegate-based so unit tests can drive it from plain
         /// dictionaries: <paramref name="getStatus"/> is the derived
@@ -711,18 +756,17 @@ namespace TarkovHelper.Services
         /// _questProgress lookup, needed because the entry check reads the
         /// NormalizedName key even for tasks that have an Id, which GetStatus does not.
         /// </summary>
-        internal static (List<TarkovTask> QuestsToComplete, List<(TarkovTask Task, string ListedName)> AlternativesToFail)
-            ComputeCompletionCascade(
-                TarkovTask task,
-                bool completePrerequisites,
-                Func<string, TarkovTask?> taskById,
-                Func<string, TarkovTask?> taskByName,
-                Func<TarkovTask, QuestStatus> getStatus,
-                Func<string, QuestStatus?> recordedStatus)
+        internal static QuestCompletionPlan ComputeCompletionCascade(
+            TarkovTask task,
+            bool completePrerequisites,
+            Func<string, TarkovTask?> taskById,
+            Func<string, TarkovTask?> taskByName,
+            Func<TarkovTask, QuestStatus> getStatus,
+            Func<string, QuestStatus?> recordedStatus)
         {
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var plannedDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var questsToComplete = new List<TarkovTask>();
+            var completions = new List<PlannedQuestChange>();
 
             bool IsDoneRecordedOrPlanned(string? key)
                 => !string.IsNullOrEmpty(key)
@@ -732,15 +776,54 @@ namespace TarkovHelper.Services
             // completions count as Done ahead of the real (unmutated) state.
             QuestStatus EffectiveStatus(TarkovTask quest)
             {
-                var key = quest.Ids?.FirstOrDefault() ?? quest.NormalizedName;
+                var key = ProgressKeyOf(quest);
                 if (!string.IsNullOrEmpty(key) && plannedDone.Contains(key))
                     return QuestStatus.Done;
                 return getStatus(quest);
             }
 
+            // The prerequisites this completion may auto-complete, resolved from
+            // TaskRequirements or — only when TaskRequirements is null — the legacy
+            // Previous name list (which always means "must be completed").
+            IEnumerable<TarkovTask> AutoCompletablePrerequisites(TarkovTask node)
+            {
+                if (node.TaskRequirements != null)
+                {
+                    // Member counts per OR group: multi-member groups are excluded below.
+                    var groupSizes = node.TaskRequirements
+                        .Where(r => r.GroupId > 0)
+                        .GroupBy(r => r.GroupId)
+                        .ToDictionary(g => g.Key, g => g.Count());
+
+                    foreach (var req in node.TaskRequirements)
+                    {
+                        // Any one member of a multi-member OR group satisfies it — the
+                        // user must choose which; completing all of them over-records.
+                        if (req.GroupId > 0 && groupSizes[req.GroupId] > 1) continue;
+
+                        // Fail-/Accept-type requirements are not satisfied by completion.
+                        if (!RequiresCompletion(req.Status)) continue;
+
+                        var prevTask = !string.IsNullOrEmpty(req.TaskId)
+                            ? taskById(req.TaskId)
+                            : taskByName(req.TaskNormalizedName);
+
+                        if (prevTask != null) yield return prevTask;
+                    }
+                }
+                // Fallback to Previous list
+                else if (node.Previous != null)
+                {
+                    foreach (var prevName in node.Previous)
+                    {
+                        if (taskByName(prevName) is { } prevTask) yield return prevTask;
+                    }
+                }
+            }
+
             void Visit(TarkovTask node, bool followPrerequisites)
             {
-                var nodeKey = node.Ids?.FirstOrDefault() ?? node.NormalizedName;
+                var nodeKey = ProgressKeyOf(node);
 
                 if (string.IsNullOrEmpty(nodeKey)) return;
 
@@ -751,73 +834,57 @@ namespace TarkovHelper.Services
                 if (IsDoneRecordedOrPlanned(nodeKey)) return;
                 if (IsDoneRecordedOrPlanned(node.NormalizedName)) return;
 
-                // Complete prerequisites first (recursive) using TaskRequirements
-                if (followPrerequisites && node.TaskRequirements != null)
+                // Complete prerequisites first (recursive)
+                if (followPrerequisites)
                 {
-                    foreach (var req in node.TaskRequirements)
+                    foreach (var prevTask in AutoCompletablePrerequisites(node))
                     {
-                        var prevTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? taskById(req.TaskId)
-                            : taskByName(req.TaskNormalizedName);
+                        if (EffectiveStatus(prevTask) == QuestStatus.Done) continue;
 
-                        if (prevTask != null && EffectiveStatus(prevTask) != QuestStatus.Done)
-                        {
-                            // Skip alternative quests - user must choose which one to complete
-                            if (HasAlternatives(prevTask))
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Skipping alternative quest: {prevTask.Name}");
-                                continue;
-                            }
-                            Visit(prevTask, followPrerequisites: true);
-                        }
-                    }
-                }
-                // Fallback to Previous list
-                else if (followPrerequisites && node.Previous != null)
-                {
-                    foreach (var prevName in node.Previous)
-                    {
-                        var prevTask = taskByName(prevName);
-                        if (prevTask != null && EffectiveStatus(prevTask) != QuestStatus.Done)
-                        {
-                            // Skip alternative quests - user must choose which one to complete
-                            if (HasAlternatives(prevTask))
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Skipping alternative quest: {prevTask.Name}");
-                                continue;
-                            }
-                            Visit(prevTask, followPrerequisites: true);
-                        }
+                        // Skip alternative quests - user must choose which one to complete
+                        if (prevTask.HasAlternatives) continue;
+
+                        Visit(prevTask, followPrerequisites: true);
                     }
                 }
 
                 plannedDone.Add(nodeKey);
-                questsToComplete.Add(node);
+                completions.Add(new PlannedQuestChange(node, nodeKey));
             }
 
             Visit(task, completePrerequisites);
 
             // Fail alternative quests of the clicked quest (mutually exclusive)
-            var alternativesToFail = new List<(TarkovTask Task, string ListedName)>();
+            var alternativesToFail = new List<PlannedQuestChange>();
             if (task.AlternativeQuests != null)
             {
                 foreach (var altQuestName in task.AlternativeQuests)
                 {
                     // Try to find by NormalizedName (current data format) or by Id
                     var altTask = taskByName(altQuestName) ?? taskById(altQuestName);
-                    if (altTask != null)
-                    {
-                        var altStatus = EffectiveStatus(altTask);
-                        // Only fail if not already done or failed
-                        if (altStatus != QuestStatus.Done && altStatus != QuestStatus.Failed)
-                        {
-                            alternativesToFail.Add((altTask, altQuestName));
-                        }
-                    }
+                    if (altTask == null) continue;
+
+                    var altStatus = EffectiveStatus(altTask);
+                    // Only fail if not already done or failed
+                    if (altStatus == QuestStatus.Done || altStatus == QuestStatus.Failed) continue;
+
+                    // Fail key: first non-empty Id, else the raw listed name — the
+                    // legacy fallback key the pre-refactor code wrote under.
+                    var altId = altTask.Ids?.FirstOrDefault(i => !string.IsNullOrEmpty(i));
+                    alternativesToFail.Add(new PlannedQuestChange(
+                        altTask, !string.IsNullOrEmpty(altId) ? altId! : altQuestName));
                 }
             }
 
-            return (questsToComplete, alternativesToFail);
+            // Post-order: when the clicked quest was planned it is necessarily the
+            // last completion; when it was skipped (already Done, keyless, or cycled)
+            // nothing below it was planned either, so the list is empty.
+            PlannedQuestChange? clickedQuest =
+                completions.Count > 0 && ReferenceEquals(completions[^1].Quest, task)
+                    ? completions[^1]
+                    : null;
+
+            return new QuestCompletionPlan(completions, clickedQuest, alternativesToFail);
         }
 
         /// <summary>
@@ -878,59 +945,6 @@ namespace TarkovHelper.Services
                 _ = SaveProgressBatchAsync(changedQuests);
                 ProgressChanged?.Invoke(this, EventArgs.Empty);
             }
-        }
-
-        /// <summary>
-        /// Internal method to complete quest with circular reference prevention
-        /// Returns true if any quest was changed
-        /// </summary>
-        private bool CompleteQuestInternal(TarkovTask task, bool completePrerequisites, HashSet<string> visited)
-        {
-            var taskId = task.Ids?.FirstOrDefault();
-            var taskKey = taskId ?? task.NormalizedName;
-
-            if (string.IsNullOrEmpty(taskKey)) return false;
-
-            // Prevent circular reference - if already visiting this quest, skip
-            if (!visited.Add(taskKey)) return false;
-
-            // Skip if already done (check by both Id and NormalizedName)
-            if (_questProgress.TryGetValue(taskKey, out var currentStatus) && currentStatus == QuestStatus.Done)
-                return false;
-            if (!string.IsNullOrEmpty(task.NormalizedName) &&
-                _questProgress.TryGetValue(task.NormalizedName, out var statusByName) && statusByName == QuestStatus.Done)
-                return false;
-
-            // Complete prerequisites first (recursive) using TaskRequirements
-            if (completePrerequisites && task.TaskRequirements != null)
-            {
-                foreach (var req in task.TaskRequirements)
-                {
-                    var prevTask = !string.IsNullOrEmpty(req.TaskId)
-                        ? GetTaskById(req.TaskId)
-                        : GetTask(req.TaskNormalizedName);
-
-                    if (prevTask != null && GetStatus(prevTask) != QuestStatus.Done)
-                    {
-                        CompleteQuestInternal(prevTask, true, visited);
-                    }
-                }
-            }
-            // Fallback to Previous list
-            else if (completePrerequisites && task.Previous != null)
-            {
-                foreach (var prevName in task.Previous)
-                {
-                    var prevTask = GetTask(prevName);
-                    if (prevTask != null && GetStatus(prevTask) != QuestStatus.Done)
-                    {
-                        CompleteQuestInternal(prevTask, true, visited);
-                    }
-                }
-            }
-
-            _questProgress[taskKey] = QuestStatus.Done;
-            return true;
         }
 
         /// <summary>
