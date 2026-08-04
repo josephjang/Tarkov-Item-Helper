@@ -14,10 +14,6 @@ namespace TarkovHelper.Tests;
 [Trait("Category", "E2E")]
 public sealed class QuestOverviewFiltersE2ETests : E2ETestBase
 {
-    /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
-    private static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
-        => AppDriver.PollUntil(condition, what, timeoutSeconds);
-
     /// <summary>Polls until CmbStatus reports the expected selected item name.</summary>
     private static void WaitForStatus(AppDriver app, string expected)
         => WaitUntil(() => app.WaitForComboSelection("CmbStatus") == expected,

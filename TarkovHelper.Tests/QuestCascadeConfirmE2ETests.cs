@@ -5,9 +5,12 @@ namespace TarkovHelper.Tests;
 /// <summary>
 /// End-to-end coverage for the quest complete-cascade confirmation dialog (see
 /// feature-quest-complete-cascade-confirm.md): completing a quest whose cascade is
-/// non-empty must show QuestCompleteConfirmDialog first — Cancel changes nothing,
-/// Confirm applies the quest plus its cascade — while a cascade-free completion
-/// stays one-click with no dialog.
+/// non-empty must show QuestCompleteConfirmDialog first — dismissing it (Cancel or
+/// the X) changes nothing, Confirm applies the quest plus its cascade verbatim —
+/// while a cascade-free completion stays one-click with no dialog. Both halves of
+/// the preview are covered: auto-completed prerequisites and the red auto-failed
+/// alternatives section, including that Confirm persists the rows to user_data.db
+/// (the batch save is fire-and-forget, so UI state alone proves nothing).
 ///
 /// The dialog is an owned top-level window, not a reliable UIA descendant of the
 /// main window, so it is located by its window title (AppDriver.WaitForAppWindow)
@@ -18,8 +21,9 @@ namespace TarkovHelper.Tests;
 /// shift or a denied SetForegroundWindow.
 ///
 /// Test data comes from E2EQuestData on a fresh profile: the locked-quest query
-/// guarantees exactly one Active prerequisite and no OptionalQuests involvement,
-/// so the dialog previews exactly one completion and zero failures.
+/// guarantees exactly one Active prerequisite and no OptionalQuests involvement
+/// (one completion, zero failures); the single-alternative query guarantees
+/// exactly one auto-failed alternative.
 /// </summary>
 [Collection("E2E")]
 [Trait("Category", "E2E")]
@@ -31,29 +35,6 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
     /// </summary>
     private const string DialogTitle = "Confirm Quest Completion";
 
-    /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
-    private static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
-        => AppDriver.PollUntil(condition, what, timeoutSeconds);
-
-    /// <summary>Opens the Quests tab, searches the quest (unique substring), selects it, waits for its detail.</summary>
-    private static void ShowQuestDetail(AppDriver app, string questName)
-    {
-        app.SelectTab("TabQuests", "LstQuests");
-        // The status filter defaults to Active on a fresh profile, which would hide
-        // the Locked quest under test — show every status before searching.
-        app.SelectComboItemByName("CmbStatus", "All");
-        app.SetTextBoxValue("TxtSearch", questName);
-        // The search filter is debounced (QuestListPage.TxtSearch_TextChanged), so wait
-        // for it to apply before touching row 0 — otherwise this could grab the first
-        // row of the still-unfiltered list. Both E2EQuestData queries guarantee the
-        // name is a unique search substring, so exactly one row survives.
-        WaitUntil(() => app.GetListItemCount("LstQuests") == 1,
-            $"quest list to filter down to '{questName}'");
-        app.SelectListItemAt("LstQuests", 0);
-        WaitUntil(() => app.GetElementText("TxtDetailName") == questName,
-            $"detail panel to show '{questName}'");
-    }
-
     /// <summary>Invokes Mark Complete and waits for the cascade dialog window.</summary>
     private static AutomationElement OpenCascadeDialog(AppDriver app)
     {
@@ -64,7 +45,7 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
     /// <summary>
     /// Asserts the dialog previews exactly the one guaranteed prerequisite: the
     /// completed-section header counts 1, the prerequisite is listed, and the failed
-    /// section (no alternatives by construction) is absent or collapsed.
+    /// section (no alternatives by construction) is absent.
     /// </summary>
     private static void AssertDialogPreviewsPrereq(AutomationElement dialog, string prereqName)
     {
@@ -73,44 +54,53 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
         Assert.Equal("Will also be completed (1)",
             AppDriver.WaitForElementUnder(dialog, "TxtCascadeCompletedHeader").Current.Name);
 
+        // A Collapsed WPF element exposes no automation peer at all, so the failed
+        // section being collapsed means FindFirst returns null — non-null would mean
+        // the section is actually rendered.
         var failedHeader = dialog.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "TxtCascadeFailedHeader"));
-        Assert.True(failedHeader == null || failedHeader.Current.IsOffscreen,
+        Assert.True(failedHeader == null,
             "failed section is visible for a quest without alternatives");
     }
 
-    [E2EFact]
-    public void Locked_quest_completion_shows_dialog_and_cancel_changes_nothing()
+    [E2ETheory]
+    [InlineData("BtnCascadeCancel")]
+    [InlineData("BtnCascadeClose")]
+    public void Locked_quest_completion_shows_dialog_and_dismissing_changes_nothing(string dismissButtonId)
     {
         var (questName, prereqName) = E2EQuestData.FindLockedQuestWithActivePrereq();
         using var app = LaunchMaximized();
 
-        ShowQuestDetail(app, questName);
+        ShowQuestDetail(app, questName, "All");
         var dialog = OpenCascadeDialog(app);
         AssertDialogPreviewsPrereq(dialog, prereqName);
 
-        AppDriver.Invoke(AppDriver.WaitForElementUnder(dialog, "BtnCascadeCancel"));
+        // Cancel and the X are distinct buttons wired to the same dismiss path; the
+        // spec promises every close path leaves the completion unapplied, so each
+        // gets exercised.
+        AppDriver.Invoke(AppDriver.WaitForElementUnder(dialog, dismissButtonId));
         app.WaitForAppWindowClosed(DialogTitle);
 
         // Nothing changed on the quest: still completable, no Reset button.
         app.WaitForElementVisibility("BtnComplete", visible: true);
-        Assert.False(app.IsElementVisible("BtnReset"), "quest gained a Reset button after Cancel");
+        Assert.False(app.IsElementVisible("BtnReset"), "quest gained a Reset button after dismissing");
 
         // The prerequisite is untouched too — its detail still offers Mark Complete.
         app.ClickTextElementWithScroll(prereqName, "PrerequisitesList", "DetailScrollViewer");
         WaitUntil(() => app.GetElementText("TxtDetailName") == prereqName,
             $"detail panel to show prerequisite '{prereqName}'");
         app.WaitForElementVisibility("BtnComplete", visible: true);
-        Assert.False(app.IsElementVisible("BtnReset"), "prerequisite gained a Reset button after Cancel");
+        Assert.False(app.IsElementVisible("BtnReset"), "prerequisite gained a Reset button after dismissing");
     }
 
     [E2EFact]
     public void Confirm_completes_the_quest_and_its_prerequisite()
     {
         var (questName, prereqName) = E2EQuestData.FindLockedQuestWithActivePrereq();
-        using var app = LaunchMaximized();
+        var configDir = NewConfigDir();
+        using var app = LaunchMaximized(configDir);
 
-        ShowQuestDetail(app, questName);
+        ShowQuestDetail(app, questName, "All");
         var dialog = OpenCascadeDialog(app);
         AssertDialogPreviewsPrereq(dialog, prereqName);
 
@@ -127,6 +117,43 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
             $"detail panel to show prerequisite '{prereqName}'");
         app.WaitForElementVisibility("BtnComplete", visible: false);
         app.WaitForElementVisibility("BtnReset", visible: true);
+
+        // Both completions actually reached user_data.db — the batch save is
+        // fire-and-forget with a swallowing catch, so poll the rows themselves.
+        var questId = E2EQuestData.QuestIdByName(questName);
+        var prereqId = E2EQuestData.QuestIdByName(prereqName);
+        WaitUntil(() => E2EDb.ReadQuestProgress(configDir, questId) == "Done",
+            $"'{questName}' Done row to persist");
+        WaitUntil(() => E2EDb.ReadQuestProgress(configDir, prereqId) == "Done",
+            $"'{prereqName}' Done row to persist");
+    }
+
+    [E2EFact]
+    public void Completion_with_alternative_previews_and_persists_the_failure()
+    {
+        var (questName, altName, questId, altId) = E2EQuestData.FindQuestWithSingleAlternative();
+        var configDir = NewConfigDir();
+        using var app = LaunchMaximized(configDir);
+
+        ShowQuestDetail(app, questName, "All");
+        var dialog = OpenCascadeDialog(app);
+
+        // The red failed section previews exactly the one guaranteed alternative.
+        WaitUntil(() => AppDriver.HasTextElementUnder(dialog, altName),
+            $"cascade dialog to list alternative '{altName}'");
+        Assert.Equal("Will be FAILED (1)",
+            AppDriver.WaitForElementUnder(dialog, "TxtCascadeFailedHeader").Current.Name);
+
+        AppDriver.Invoke(AppDriver.WaitForElementUnder(dialog, "BtnCascadeConfirm"));
+        app.WaitForAppWindowClosed(DialogTitle);
+
+        // The quest completed, and the previewed failure was applied and persisted.
+        app.WaitForElementVisibility("BtnComplete", visible: false);
+        app.WaitForElementVisibility("BtnReset", visible: true);
+        WaitUntil(() => E2EDb.ReadQuestProgress(configDir, questId) == "Done",
+            $"'{questName}' Done row to persist");
+        WaitUntil(() => E2EDb.ReadQuestProgress(configDir, altId) == "Failed",
+            $"'{altName}' Failed row to persist");
     }
 
     [E2EFact]
@@ -135,15 +162,20 @@ public sealed class QuestCascadeConfirmE2ETests : E2ETestBase
         var questName = E2EQuestData.FindStandaloneActiveQuest();
         using var app = LaunchMaximized();
 
-        ShowQuestDetail(app, questName);
+        ShowQuestDetail(app, questName, "All");
         app.InvokeElement("BtnComplete");
 
-        // One-click completion: the button row flips, and because the click handler
-        // decides dialog-or-complete synchronously, a flipped row proves no dialog
-        // was (or still is) in the way.
-        app.WaitForElementVisibility("BtnComplete", visible: false);
-        app.WaitForElementVisibility("BtnReset", visible: true);
+        // Race the two possible outcomes: either the dialog opened (a regression —
+        // the completion then never applies and the buttons never flip) or the
+        // one-click completion flipped the button row. Checking the dialog FIRST
+        // keeps the assertion live; waiting for the flip alone would time out on an
+        // unrelated line instead of naming the regression.
+        WaitUntil(() => app.HasAppWindow(DialogTitle) || !app.IsElementVisible("BtnComplete"),
+            "the completion to either open the cascade dialog or apply");
         Assert.False(app.HasAppWindow(DialogTitle),
             "cascade dialog appeared for a cascade-free completion");
+
+        app.WaitForElementVisibility("BtnComplete", visible: false);
+        app.WaitForElementVisibility("BtnReset", visible: true);
     }
 }
