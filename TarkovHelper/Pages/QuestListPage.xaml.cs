@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Settings;
+using TarkovHelper.Windows;
 using System.Linq;
 
 namespace TarkovHelper.Pages
@@ -1411,8 +1412,30 @@ namespace TarkovHelper.Pages
         {
             if (sender is Button btn && btn.Tag is QuestViewModel vm)
             {
-                _progressService.CompleteQuest(vm.Task, true);
+                CompleteQuestWithConfirmation(vm.Task);
             }
+        }
+
+        /// <summary>
+        /// Completes a quest, confirming first when the completion would cascade —
+        /// auto-complete incomplete prerequisites or auto-fail mutually exclusive
+        /// alternatives (see feature-quest-complete-cascade-confirm.md). An empty
+        /// cascade keeps the old one-click completion.
+        /// </summary>
+        private void CompleteQuestWithConfirmation(TarkovTask task)
+        {
+            var cascade = _progressService.GetCompletionCascade(task);
+            if (!cascade.IsEmpty)
+            {
+                var dialog = new QuestCompleteConfirmDialog(task, cascade)
+                {
+                    Owner = Window.GetWindow(this)
+                };
+                dialog.ShowDialog();
+                if (!dialog.Confirmed) return;
+            }
+
+            _progressService.CompleteQuest(task, true);
         }
 
         private void BtnWiki_Click(object sender, RoutedEventArgs e)
@@ -1448,7 +1471,7 @@ namespace TarkovHelper.Pages
             var selectedVm = ShownQuestViewModel();
             if (selectedVm != null)
             {
-                _progressService.CompleteQuest(selectedVm.Task, true);
+                CompleteQuestWithConfirmation(selectedVm.Task);
             }
         }
 

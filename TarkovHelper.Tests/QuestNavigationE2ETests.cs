@@ -1,6 +1,3 @@
-using System.IO;
-using Microsoft.Data.Sqlite;
-
 namespace TarkovHelper.Tests;
 
 /// <summary>
@@ -15,74 +12,18 @@ namespace TarkovHelper.Tests;
 /// and borders are invisible to UIA — so its Button, BtnShowInList, is the probe for
 /// "notice visible" throughout.
 ///
-/// Quest/prerequisite pairs are picked from the bundled tarkov_data.db (copied to the
-/// test output) instead of hard-coding quest names, so the tests survive database
-/// updates. All tests run against a fresh profile: no progress, default player level,
-/// so a quest with prerequisites is Locked and a prerequisite-free quest is Active.
+/// Quest/prerequisite pairs come from E2EQuestData (derived from the bundled
+/// tarkov_data.db, so the tests survive database updates). All tests run against a
+/// fresh profile: no progress, default player level, so a quest with prerequisites
+/// is Locked and a prerequisite-free quest is Active. The shared query also
+/// guarantees the prerequisite completes without the quest-complete confirmation
+/// dialog (empty cascade), which Detail_buttons_act_on_the_shown_quest_while_it_is_hidden_by_filters
+/// relies on.
 /// </summary>
 [Collection("E2E")]
 [Trait("Category", "E2E")]
 public sealed class QuestNavigationE2ETests : E2ETestBase
 {
-    // ---------- asset-db test data ----------
-
-    private static string AssetDbPath => Path.Combine(AppContext.BaseDirectory, "tarkov_data.db");
-
-    /// <summary>
-    /// A quest that is Locked on a fresh profile (exactly one Complete-type
-    /// prerequisite, nothing else gating it) whose prerequisite is Active on a fresh
-    /// profile (no prerequisites of its own, no level/karma/edition/faction gate).
-    /// The quest's English name must be unique as a search substring across all
-    /// quest names so searching it filters the list down to that single quest.
-    /// </summary>
-    private static (string QuestName, string PrereqName) FindLockedQuestWithActivePrereq()
-    {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
-            SELECT q.Name, p.Name
-            FROM Quests q
-            JOIN QuestRequirements r ON r.QuestId = q.Id
-            JOIN Quests p ON p.Id = r.RequiredQuestId
-            WHERE r.RequirementType = 'Complete'
-              AND (SELECT COUNT(*) FROM QuestRequirements r2 WHERE r2.QuestId = q.Id) = 1
-              AND q.Faction IS NULL AND q.RequiredEdition IS NULL
-              AND (q.RequiredPrestigeLevel IS NULL OR q.RequiredPrestigeLevel = 0)
-              AND (q.RequiredDecodeCount IS NULL OR q.RequiredDecodeCount = 0)
-              AND p.Faction IS NULL AND p.RequiredEdition IS NULL
-              AND (p.RequiredPrestigeLevel IS NULL OR p.RequiredPrestigeLevel = 0)
-              AND (p.RequiredDecodeCount IS NULL OR p.RequiredDecodeCount = 0)
-              AND (p.MinLevel IS NULL OR p.MinLevel <= 15)
-              AND p.MinScavKarma IS NULL
-              AND NOT EXISTS (SELECT 1 FROM QuestRequirements pr WHERE pr.QuestId = p.Id)
-              AND p.Name <> q.Name
-              AND (SELECT COUNT(*) FROM Quests q2
-                   WHERE instr(lower(q2.Name), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameKO, '')), lower(q.Name)) > 0
-                      OR instr(lower(ifnull(q2.NameJA, '')), lower(q.Name)) > 0) = 1
-            ORDER BY q.Name
-            LIMIT 1";
-
-        using var reader = command.ExecuteReader();
-        Assert.True(reader.Read(),
-            "tarkov_data.db has no locked quest with a single active prerequisite matching the test constraints");
-        return (reader.GetString(0), reader.GetString(1));
-    }
-
-    /// <summary>Every quest's English display name, for spotting quest links in templated lists.</summary>
-    private static HashSet<string> AllQuestNames()
-    {
-        using var connection = new SqliteConnection($"Data Source={AssetDbPath};Mode=ReadOnly");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Name FROM Quests WHERE Name IS NOT NULL AND Name <> ''";
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        using var reader = command.ExecuteReader();
-        while (reader.Read()) names.Add(reader.GetString(0));
-        return names;
-    }
-
     // ---------- shared choreography ----------
 
     /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
@@ -119,7 +60,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     [E2EFact]
     public void Prerequisite_link_preserves_filters_and_show_in_list_is_the_explicit_reset()
     {
-        var (questName, prereqName) = FindLockedQuestWithActivePrereq();
+        var (questName, prereqName) = E2EQuestData.FindLockedQuestWithActivePrereq();
         using var app = LaunchMaximized();
 
         NavigateToHiddenPrereq(app, questName, prereqName);
@@ -145,7 +86,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     [E2EFact]
     public void Detail_buttons_act_on_the_shown_quest_while_it_is_hidden_by_filters()
     {
-        var (questName, prereqName) = FindLockedQuestWithActivePrereq();
+        var (questName, prereqName) = E2EQuestData.FindLockedQuestWithActivePrereq();
         using var app = LaunchMaximized();
 
         NavigateToHiddenPrereq(app, questName, prereqName);
@@ -188,7 +129,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     [E2EFact]
     public void Filter_change_that_reveals_the_shown_quest_selects_it_and_hides_the_notice()
     {
-        var (questName, prereqName) = FindLockedQuestWithActivePrereq();
+        var (questName, prereqName) = E2EQuestData.FindLockedQuestWithActivePrereq();
         using var app = LaunchMaximized();
 
         NavigateToHiddenPrereq(app, questName, prereqName);
@@ -216,7 +157,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     [E2EFact]
     public void Items_page_quest_link_preserves_quest_tab_filters()
     {
-        var questNames = AllQuestNames();
+        var questNames = E2EQuestData.AllQuestNames();
         using var app = LaunchMaximized();
 
         // Park the quest tab on a non-default filter, then leave the tab.
@@ -240,7 +181,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     [E2EFact]
     public void Collector_page_quest_link_preserves_quest_tab_filters()
     {
-        var questNames = AllQuestNames();
+        var questNames = E2EQuestData.AllQuestNames();
         using var app = LaunchMaximized();
 
         app.SelectTab("TabQuests", "LstQuests");
@@ -262,7 +203,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
     [E2EFact]
     public void Recommendation_click_preserves_filters_when_target_is_filtered_out()
     {
-        var questNames = AllQuestNames();
+        var questNames = E2EQuestData.AllQuestNames();
         using var app = LaunchMaximized();
 
         app.SelectTab("TabQuests", "LstQuests");

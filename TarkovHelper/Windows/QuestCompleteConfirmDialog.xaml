@@ -1,0 +1,138 @@
+<Window x:Class="TarkovHelper.Windows.QuestCompleteConfirmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Confirm Quest Completion"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        ShowInTaskbar="False">
+
+    <Border Background="{DynamicResource BackgroundDarkBrush}"
+            CornerRadius="8" Padding="24"
+            MinWidth="480" MaxWidth="620" MaxHeight="650">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Grid Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock x:Name="TxtCascadeTitle" Text="Confirm Quest Completion"
+                           FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource AccentBrush}"/>
+                <Button x:Name="BtnCascadeClose" Content="X"
+                        HorizontalAlignment="Right"
+                        Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
+                        Click="BtnCascadeClose_Click"/>
+            </Grid>
+
+            <!-- Clicked quest -->
+            <TextBlock x:Name="TxtCascadeQuest" Grid.Row="1" Margin="0,0,0,12"
+                       FontSize="{DynamicResource FontSizeSmall}"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextWrapping="Wrap"/>
+
+            <StackPanel Grid.Row="2" Margin="0,0,0,16">
+                <!-- Prerequisites that will be auto-completed -->
+                <Border x:Name="CascadeCompletedSection"
+                        Background="{DynamicResource BackgroundMediumBrush}"
+                        CornerRadius="4" Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
+                                CornerRadius="4,4,0,0" Padding="12,8">
+                            <TextBlock x:Name="TxtCascadeCompletedHeader" Text="Will also be completed (0)"
+                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Border>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="220">
+                            <ItemsControl x:Name="CascadeCompletedList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
+                                                Padding="12,6">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding QuestName}"
+                                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="{Binding Trader}"
+                                                           FontSize="{DynamicResource FontSizeTiny}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Mutually exclusive alternatives that will be auto-failed; carries the
+                     same #FF5722 accent as the detail panel's "Other Choices" section -->
+                <Border x:Name="CascadeFailedSection"
+                        Background="{DynamicResource BackgroundMediumBrush}"
+                        CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="#44FF5722"
+                                CornerRadius="4,4,0,0" Padding="12,8">
+                            <TextBlock x:Name="TxtCascadeFailedHeader" Text="Will be FAILED (0)"
+                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                       Foreground="#FF5722"/>
+                        </Border>
+                        <TextBlock x:Name="TxtCascadeFailedNote" Grid.Row="1" Margin="12,8,12,0"
+                                   FontSize="{DynamicResource FontSizeTiny}" FontStyle="Italic"
+                                   Foreground="#FF5722" TextWrapping="Wrap"/>
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" MaxHeight="180">
+                            <ItemsControl x:Name="CascadeFailedList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
+                                                Padding="12,6">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding QuestName}"
+                                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                                           Foreground="#FF5722"/>
+                                                <TextBlock Text="{Binding Trader}"
+                                                           FontSize="{DynamicResource FontSizeTiny}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnCascadeCancel" Content="Cancel"
+                        Padding="16,8" Margin="0,0,8,0"
+                        Click="BtnCascadeCancel_Click"/>
+                <Button x:Name="BtnCascadeConfirm" Content="Complete Quest"
+                        Padding="16,8"
+                        Click="BtnCascadeConfirm_Click"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="{DynamicResource BackgroundDarkBrush}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

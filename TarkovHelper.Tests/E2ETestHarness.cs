@@ -57,6 +57,12 @@ internal sealed class AppDriver : IDisposable
         // tarkov_data.db over the build-output Assets copy mid-test, silently
         // diverging from the static copy the tests derive their expectations from.
         psi.Environment["TARKOVHELPER_DISABLE_DB_UPDATE"] = "1";
+        // Without this a Debug-build app opens the Topmost Debug Toolbox at the OS
+        // cascade position (upper-left, drifting per launch), which steals focus on
+        // Show() and intermittently obscures the quest list / recommendations area —
+        // GetClickablePoint then throws on the obscured rows and synthetic clicks
+        // land on the toolbox instead of the intended element.
+        psi.Environment["TARKOVHELPER_DISABLE_DEBUG_TOOLBOX"] = "1";
 
         var process = Process.Start(psi)!;
         try
@@ -506,6 +512,68 @@ internal sealed class AppDriver : IDisposable
         => _uiaRoot.FindFirst(
             TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+
+    #endregion
+
+    #region Owned windows (dialogs)
+
+    /// <summary>
+    /// Waits for a visible top-level window of the app process with the exact title
+    /// (e.g. a modal dialog owned by the main window — owned windows are not reliably
+    /// UIA descendants of their owner, so they are located via Win32 instead) and
+    /// returns its root automation element for scoped searches.
+    /// </summary>
+    public AutomationElement WaitForAppWindow(string title, int timeoutSeconds = 30)
+    {
+        AutomationElement? window = null;
+        PollUntil(() =>
+        {
+            var hwnd = Win32.FindTopLevelWindow(_process.Id, title);
+            if (hwnd == IntPtr.Zero) return false;
+            window = AutomationElement.FromHandle(hwnd);
+            return true;
+        }, DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"window titled '{title}' did not appear within {timeoutSeconds}s");
+        return window!;
+    }
+
+    /// <summary>Whether a visible top-level window with the exact title exists right now.</summary>
+    public bool HasAppWindow(string title)
+        => Win32.FindTopLevelWindow(_process.Id, title) != IntPtr.Zero;
+
+    /// <summary>Waits until no visible top-level window with the title remains (dialog closed).</summary>
+    public void WaitForAppWindowClosed(string title, int timeoutSeconds = 30)
+        => PollUntil(() => !HasAppWindow(title),
+            DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"window titled '{title}' did not close within {timeoutSeconds}s");
+
+    /// <summary>
+    /// Waits for an element by AutomationId among a scope element's descendants —
+    /// the dialog-window counterpart of <see cref="WaitForElement(string, int)"/>.
+    /// </summary>
+    public static AutomationElement WaitForElementUnder(AutomationElement scope, string automationId,
+        int timeoutSeconds = 30)
+    {
+        AutomationElement? element = null;
+        PollUntil(() =>
+        {
+            element = scope.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+            return element != null;
+        }, DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds),
+            () => $"element '{automationId}' did not appear under the scope element");
+        return element!;
+    }
+
+    /// <summary>Whether a Text (TextBlock) descendant with the exact rendered text exists under the scope element.</summary>
+    public static bool HasTextElementUnder(AutomationElement scope, string text)
+        => scope.FindFirst(TreeScope.Descendants, new AndCondition(
+               new PropertyCondition(AutomationElement.NameProperty, text),
+               new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))) != null;
+
+    /// <summary>Invokes an already-resolved button-like element (InvokePattern), e.g. inside a dialog window.</summary>
+    public static void Invoke(AutomationElement element)
+        => ((InvokePattern)element.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
 
     #endregion
 

@@ -269,4 +269,57 @@ public partial class LocalizationService
     };
 
     #endregion
+
+    #region Quest Complete Cascade Confirmation
+
+    // Strings for QuestCompleteConfirmDialog (shown before a completion whose
+    // cascade would auto-complete prerequisites or auto-fail alternatives).
+    // The dialog's Cancel button reuses the Core "Cancel" property.
+
+    public string CascadeConfirmTitle => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 완료 확인",
+        AppLanguage.JA => "クエスト完了の確認",
+        _ => "Confirm Quest Completion"
+    };
+
+    /// <summary>{0} = the clicked quest's localized name.</summary>
+    public string CascadeConfirmQuestFormat => CurrentLanguage switch
+    {
+        AppLanguage.KO => "'{0}' 완료 시 아래 퀘스트도 함께 변경됩니다.",
+        AppLanguage.JA => "「{0}」を完了すると、以下のクエストも変更されます。",
+        _ => "Completing '{0}' will also change the quests below."
+    };
+
+    /// <summary>{0} = number of prerequisites that will be auto-completed.</summary>
+    public string CascadeCompletedHeaderFormat => CurrentLanguage switch
+    {
+        AppLanguage.KO => "함께 완료될 퀘스트 ({0}개)",
+        AppLanguage.JA => "同時に完了されるクエスト ({0}件)",
+        _ => "Will also be completed ({0})"
+    };
+
+    /// <summary>{0} = number of mutually exclusive alternatives that will be auto-failed.</summary>
+    public string CascadeFailedHeaderFormat => CurrentLanguage switch
+    {
+        AppLanguage.KO => "실패 처리될 퀘스트 ({0}개)",
+        AppLanguage.JA => "失敗になるクエスト ({0}件)",
+        _ => "Will be FAILED ({0})"
+    };
+
+    public string CascadeFailedNote => CurrentLanguage switch
+    {
+        AppLanguage.KO => "상호 배타적인 퀘스트이므로 실패로 처리됩니다.",
+        AppLanguage.JA => "相互排他のクエストのため、失敗として処理されます。",
+        _ => "These quests are mutually exclusive and will be marked as failed."
+    };
+
+    public string CascadeConfirmButton => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 완료",
+        AppLanguage.JA => "クエストを完了",
+        _ => "Complete Quest"
+    };
+
+    #endregion
 }
