@@ -16,8 +16,9 @@ public class Program
 
         var mainWindow = new MainWindow();
 
-        // Debug 모드에서 Toolbox 창 표시
-        if (AppEnv.IsDebugMode)
+        // Debug 모드에서 Toolbox 창 표시 (e2e 테스트는 창이 화면을 가리므로 비활성화 —
+        // see AppEnv.DisableDebugToolbox)
+        if (AppEnv.IsDebugMode && !AppEnv.DisableDebugToolbox)
         {
             TestMenu.MainWindow = mainWindow;
             var toolbox = new ToolboxWindow

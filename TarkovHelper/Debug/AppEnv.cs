@@ -36,5 +36,18 @@ namespace TarkovHelper.Debug
         /// </summary>
         public static bool DisableDbUpdate { get; } =
             !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TARKOVHELPER_DISABLE_DB_UPDATE"));
+
+        /// <summary>
+        /// True when the TARKOVHELPER_DISABLE_DEBUG_TOOLBOX environment variable is set
+        /// (any non-empty value). E2e tests set it so a Debug-build app under test never
+        /// opens the ToolboxWindow: that window is Topmost, spawns at the OS default
+        /// cascade position (the upper-left of the screen, drifting per launch), and
+        /// takes focus on Show() — so it intermittently obscures the quest list /
+        /// recommendations area of the maximized main window, which breaks any test
+        /// interaction that needs real screen geometry (GetClickablePoint throws on an
+        /// obscured element, and synthetic clicks land on the toolbox instead of the row).
+        /// </summary>
+        public static bool DisableDebugToolbox { get; } =
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TARKOVHELPER_DISABLE_DEBUG_TOOLBOX"));
     }
 }
