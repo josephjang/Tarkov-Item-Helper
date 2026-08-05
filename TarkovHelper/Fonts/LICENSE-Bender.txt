@@ -1,0 +1,25 @@
+Bender — font family by Jovanny Lemonad (Ivan Gladkikh) and Oleg Zhuravlev
+Copyright (c) 2009 by Oleg Zhuravlev, Gladkikh Ivan.
+
+Bender has been distributed free of charge by its authors since its 2009
+release:
+
+- The author's freeware font project (jovanny.ru, 2009) stated that the
+  participating designers "have allowed to extend the fonts free of charge",
+  i.e. permitted their free distribution. Archived copy:
+  https://web.archive.org/web/20090905063120/http://jovanny.ru/eng-free-fonts.html
+
+- TypeType (https://typetype.org/freefonts/), the foundry co-founded by
+  Ivan Gladkikh, currently offers Bender in its Free Fonts project, stating:
+  "Each font from the 'Free Fonts' project can be used for commercial or
+  personal purposes without any restrictions."
+
+Tarkov Item Helper bundles Bender Regular and Bender Bold unmodified and
+with this attribution, on the basis of the statements above. The fonts are
+not sold, and are included solely so the application can render its user
+interface in the same typeface family as Escape from Tarkov.
+
+If you are a rights holder of Bender and object to its inclusion here,
+please open an issue at
+https://github.com/josephjang/Tarkov-Item-Helper/issues
+and the fonts will be removed promptly.

@@ -212,7 +212,7 @@
                         <StackPanel Orientation="Horizontal">
                             <StackPanel.Resources>
                                 <!-- BasedOn is required: a bare implicit style would REPLACE the
-                                     app-wide TextBlock style and drop MaplestoryFont from the
+                                     app-wide TextBlock style and drop AppFont from the
                                      labels (the glyphs set IconFont locally). Scoped to this
                                      panel so string-content controls elsewhere are unaffected. -->
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">

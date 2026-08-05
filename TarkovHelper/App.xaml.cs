@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Media;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Logging;
 
@@ -45,6 +46,10 @@ namespace TarkovHelper
             // 폰트 크기 적용
             ApplyBaseFontSize(SettingsService.Instance.BaseFontSize);
             SettingsService.Instance.BaseFontSizeChanged += (_, size) => ApplyBaseFontSize(size);
+
+            // 언어별 폰트 스택 적용 (swaps the AppFont chain live on language change)
+            ApplyFontStack(LocalizationService.Instance.CurrentLanguage);
+            LocalizationService.Instance.LanguageChanged += (_, lang) => ApplyFontStack(lang);
 
             // Note: AutoUpdater is now managed by UpdateService in MainWindow
             // It will show update dialog only when user clicks "Update to vX.X.X" button
@@ -99,6 +104,21 @@ namespace TarkovHelper
             }
 
             base.OnExit(e);
+        }
+
+        /// <summary>
+        /// Swap the app-wide font chain for the given language. AppFont is consumed
+        /// via DynamicResource throughout App.xaml, so visible text re-renders
+        /// immediately — the same mechanism ApplyBaseFontSize uses for sizes.
+        /// </summary>
+        public void ApplyFontStack(AppLanguage language)
+        {
+            // The two-argument constructor supplies the base URI that the chain's
+            // relative ./Fonts/#Family tokens resolve against; BAML-compiled
+            // resources get it implicitly, code-created FontFamily instances do not.
+            Resources["AppFont"] = new FontFamily(
+                new Uri("pack://application:,,,/"),
+                FontStacks.ForLanguage(language));
         }
 
         /// <summary>
