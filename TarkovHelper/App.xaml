@@ -6,11 +6,15 @@
              ShutdownMode="OnMainWindowClose"
 >
     <Application.Resources>
-        <!-- Custom Font -->
-        <FontFamily x:Key="MaplestoryFont">pack://application:,,,/Fonts/#Maplestory</FontFamily>
+        <!-- App-wide font chain (dynamic, swapped per language by App.ApplyFontStack).
+             This compiled default is the EN/KO chain and must stay equal to
+             FontStacks.ForLanguage(EN) — FontAssetsTests asserts it. Tokens are
+             relative (./Fonts/#Family) because absolute pack URIs embed commas
+             that break WPF's comma-split composite parsing. -->
+        <FontFamily x:Key="AppFont">./Fonts/#Bender, ./Fonts/#Play, ./Fonts/#Noto Sans CJK KR, Malgun Gothic, Yu Gothic UI, Segoe UI</FontFamily>
 
         <!-- Icon glyph font (composite: falls back to MDL2 Assets on Windows 10).
-             The implicit TextBlock style applies MaplestoryFont, so every glyph
+             The implicit TextBlock style applies AppFont, so every glyph
              TextBlock must set FontFamily="{StaticResource IconFont}" explicitly. -->
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
@@ -70,14 +74,14 @@
         <Style TargetType="Window">
             <Setter Property="Background" Value="{StaticResource BackgroundDarkBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
         </Style>
 
         <!-- TextBlock Style -->
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
         </Style>
 
@@ -89,7 +93,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -118,7 +122,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -153,7 +157,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="4,0,0,0"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
@@ -263,7 +267,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="MinHeight" Value="30"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -314,7 +318,7 @@
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -507,7 +511,7 @@
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
@@ -536,7 +540,7 @@
         <Style TargetType="Menu">
             <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
         </Style>
 
@@ -544,7 +548,7 @@
         <Style TargetType="MenuItem">
             <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="Template">

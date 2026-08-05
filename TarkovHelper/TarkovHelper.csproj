@@ -33,7 +33,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Fonts\Maplestory Light.ttf" />
+    <!-- Embedded UI fonts, one entry per file (explicit so FontAssetsTests'
+         csproj-vs-directory cross-check is meaningful) -->
+    <Resource Include="Fonts\Bender-Regular.otf" />
+    <Resource Include="Fonts\Bender-Bold.otf" />
+    <Resource Include="Fonts\Play-Regular.ttf" />
+    <Resource Include="Fonts\Play-Bold.ttf" />
+    <Resource Include="Fonts\NotoSansCJKkr-Regular.otf" />
+    <Resource Include="Fonts\NotoSansCJKkr-Bold.otf" />
+    <!-- Font license texts must travel through publish into the release zip -->
+    <None Update="Fonts\*.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Assets\Maps\*.svg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

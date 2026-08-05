@@ -1655,7 +1655,7 @@ namespace TarkovHelper.Pages
             mainContainer.Children.Add(checkBox);
 
             // Get resources for text styling
-            var fontFamily = (FontFamily)FindResource("MaplestoryFont");
+            var fontFamily = (FontFamily)FindResource("AppFont");
             var fontSize = (double)FindResource("FontSizeXSmall");
             var defaultBrush = (Brush)FindResource("TextPrimaryBrush");
             var accentBrush = (Brush)FindResource("AccentBrush");
