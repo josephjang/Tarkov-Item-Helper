@@ -1,5 +1,6 @@
 using System.Windows.Automation;
 using TarkovHelper.Services;
+using static TarkovHelper.Tests.QuestTabDriver;
 
 namespace TarkovHelper.Tests;
 

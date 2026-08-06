@@ -8,11 +8,13 @@
 > that reverses a decision here appends `Superseded by <doc>` below this line, in
 > the PR that reverses it.
 
-> Superseded in part by `feature-quest-chip-only-status-filter.md` (2026-08-07):
+> Superseded by `feature-quest-chip-only-status-filter.md` (2026-08-07), in part:
 > the status combo is removed and the chips — plus a new leading All chip — are
 > the only status filter. R2's "the status combo and the chips always agree", the
-> "dedicated All chip rejected as noise" decision, and R1's five-chip row with
-> its "N/A" label no longer hold.
+> "dedicated All chip rejected as noise" decision, R1's five-chip row with its
+> "N/A" label, and the stated rationale for the localization Non-Goal ("localizing
+> one without the other would make the bar disagree with the combo") no longer
+> hold. Everything else here stands.
 
 ## Summary
 

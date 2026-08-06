@@ -1,5 +1,6 @@
 using TarkovHelper.Models;
 using TarkovHelper.Pages;
+using TarkovHelper.Services.Settings;
 
 namespace TarkovHelper.Tests;
 
@@ -190,9 +191,14 @@ public sealed class QuestListFilterTests
     }
 
     // The production chip-tag list (All first) — the count tests iterate exactly the
-    // tags UpdateStatusChips hands to CountByStatusTag, so the All chip's count is
-    // covered by every one of them.
-    private static readonly string[] AllStatusTags = QuestStatusTags.ChipTags;
+    // tags UpdateStatusChips hands to CountByStatusTag, so every count invariant they
+    // pin (Locked includes LevelLocked, the faction/Unavailable exception, per-tag
+    // equality with Matches) now covers the All tag too. Only the three tests that
+    // index counts["All"] assert its VALUE, though — see
+    // All_chip_count_is_the_All_click_preview_not_the_sum_or_the_total.
+    // The independent oracle for WHICH tags belong lives in
+    // Chip_tags_are_exactly_All_plus_every_status_except_LevelLocked_in_display_order.
+    private static readonly string[] AllStatusTags = QuestStatusTags.ChipTags.ToArray();
 
     [Fact]
     public void Chip_counts_group_by_tag_with_locked_including_levellocked()
@@ -370,21 +376,87 @@ public sealed class QuestListFilterTests
     }
 
     [Fact]
-    public void Chip_tags_start_with_All_and_cover_every_status_except_LevelLocked()
+    public void Chip_tags_are_exactly_All_plus_every_status_except_LevelLocked_in_display_order()
     {
-        // The chips are the app's ONLY status filter, so the shared tag table must
-        // stay in step with QuestStatus — a status added to the enum with no chip
-        // would be unreachable. "All" leads the row: it is the direct route back to
-        // the unfiltered list (see feature-quest-chip-only-status-filter.md).
-        var chipTags = QuestStatusTags.ChipTags;
+        // The chips are the app's ONLY status filter AND (via IsKnown/Coerce) the
+        // allow-list that persisted questList.statusTag values are validated against,
+        // so BOTH directions are load-bearing: a status with no chip is unreachable,
+        // and a stray extra tag is a value Coerce accepts but no chip renders selected.
+        // The order is PRD R1's ("All, Active, Locked, Done, Failed, Unavailable, in
+        // that order") and is what QuestListPage.BuildStatusChips pins the chip row to,
+        // so it is asserted as a sequence, not a set.
+        //
+        // The expected list is spelled out literally on purpose — an oracle derived
+        // from ChipTags itself could only ever agree with it.
+        Assert.Equal(
+            new[] { "All", "Active", "Locked", "Done", "Failed", "Unavailable" },
+            QuestStatusTags.ChipTags);
 
-        Assert.Equal(QuestStatusTags.All, chipTags[0]);
-        Assert.Equal(chipTags.Length, chipTags.Distinct().Count());
-        foreach (var status in Enum.GetValues<QuestStatus>())
+        // LevelLocked deliberately shares the Locked chip (see CountByStatusTag), so it
+        // is the one status the row omits. Cross-checked against the live enum so a new
+        // QuestStatus member cannot be added without updating the row above.
+        var expectedStatuses = Enum.GetValues<QuestStatus>()
+            .Where(s => s != QuestStatus.LevelLocked)
+            .Select(s => s.ToString())
+            .OrderBy(s => s, StringComparer.Ordinal);
+        Assert.Equal(
+            expectedStatuses,
+            QuestStatusTags.ChipTags.Where(t => t != QuestStatusTags.All).OrderBy(t => t, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Coerce_keeps_known_tags_and_widens_everything_else_to_All()
+    {
+        // The restore-time policy: an unrecognized persisted tag must widen to the
+        // permissive "All", never narrow to the "Active" fresh-install default — a
+        // narrowing fallback would hide quests the user had chosen to see.
+        foreach (var tag in QuestStatusTags.ChipTags)
         {
-            // LevelLocked deliberately shares the Locked chip (see CountByStatusTag).
-            if (status == QuestStatus.LevelLocked) continue;
-            Assert.Contains(status.ToString(), chipTags);
+            Assert.Equal(tag, QuestStatusTags.Coerce(tag));
+        }
+
+        Assert.Equal(QuestStatusTags.All, QuestStatusTags.Coerce("NotAStatus"));
+        Assert.Equal(QuestStatusTags.All, QuestStatusTags.Coerce("LevelLocked")); // no chip of its own
+        Assert.Equal(QuestStatusTags.All, QuestStatusTags.Coerce("active"));      // ordinal
+        Assert.Equal(QuestStatusTags.All, QuestStatusTags.Coerce(""));
+        Assert.Equal(QuestStatusTags.All, QuestStatusTags.Coerce(null));
+        Assert.NotEqual(QuestListSettings.DefaultStatusTag, QuestStatusTags.Coerce("NotAStatus"));
+    }
+
+    [Fact]
+    public void NextTag_selects_the_clicked_tag_and_toggles_the_active_one_back_to_All()
+    {
+        // Clicking a chip that is not the active filter selects it...
+        Assert.Equal("Done", QuestStatusTags.NextTag(currentTag: "Active", clickedTag: "Done"));
+        Assert.Equal("Active", QuestStatusTags.NextTag(currentTag: QuestStatusTags.All, clickedTag: "Active"));
+
+        // ...and clicking the one that IS active returns to the unfiltered list.
+        Assert.Equal(QuestStatusTags.All, QuestStatusTags.NextTag(currentTag: "Done", clickedTag: "Done"));
+
+        // The All chip is not special-cased: clicking it while it is selected resolves
+        // to All, i.e. no change — which is what makes StatusChip_Click's
+        // unchanged-tag guard turn that click into a true no-op (PRD R3), with no
+        // refilter, no list rebuild and no settings write.
+        Assert.Equal(QuestStatusTags.All,
+            QuestStatusTags.NextTag(currentTag: QuestStatusTags.All, clickedTag: QuestStatusTags.All));
+
+        // Ordinal, like every other status-tag comparison: a case-mismatched "click"
+        // is a different tag, not a toggle-off.
+        Assert.Equal("done", QuestStatusTags.NextTag(currentTag: "Done", clickedTag: "done"));
+    }
+
+    [Fact]
+    public void Every_chip_tag_toggles_off_to_All_and_no_tag_toggles_onto_itself()
+    {
+        foreach (var tag in QuestStatusTags.ChipTags)
+        {
+            Assert.Equal(QuestStatusTags.All, QuestStatusTags.NextTag(tag, tag));
+        }
+
+        // From All, every status chip is reachable in one click.
+        foreach (var tag in QuestStatusTags.ChipTags.Where(t => t != QuestStatusTags.All))
+        {
+            Assert.Equal(tag, QuestStatusTags.NextTag(QuestStatusTags.All, tag));
         }
     }
 
@@ -423,6 +495,9 @@ public sealed class QuestListFilterTests
         Assert.False(QuestStatusTags.IsKnown(""));
         Assert.False(QuestStatusTags.IsKnown(null));
         Assert.False(QuestStatusTags.IsKnown("active")); // ordinal, not case-insensitive
+        // LevelLocked is a real QuestStatus that MatchesStatusTag would happily filter
+        // by, but it has no chip — so it is deliberately NOT a persistable tag.
+        Assert.False(QuestStatusTags.IsKnown(nameof(QuestStatus.LevelLocked)));
     }
 
     [Fact]

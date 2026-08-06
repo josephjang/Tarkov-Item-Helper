@@ -1,3 +1,6 @@
+using TarkovHelper.Pages;
+using static TarkovHelper.Tests.QuestTabDriver;
+
 namespace TarkovHelper.Tests;
 
 /// <summary>
@@ -8,8 +11,10 @@ namespace TarkovHelper.Tests;
 /// against the same Config dir.
 ///
 /// Status-filter state is read through the chips' UIA ItemStatus
-/// ("Selected"/"Unselected", published by UpdateStatusChips) via the shared
-/// E2ETestBase.WaitForSelectedStatusChip / SelectStatusChip helpers.
+/// (QuestStatusTags.ChipSelected/ChipUnselected, published by UpdateStatusChips) via
+/// QuestTabDriver.WaitForSelectedStatusChip / SelectStatusChip. Those helpers assert
+/// EXCLUSIVITY (exactly one chip selected) because, unlike the deleted ComboBox's
+/// SelectionPattern, per-element ItemStatus strings carry no such guarantee.
 ///
 /// PnlEmptyState is a StackPanel with no UI Automation peer, so its Button
 /// (BtnResetFilters) is the probe for "empty state visible" — the same pattern
@@ -45,14 +50,29 @@ public sealed class QuestOverviewFiltersE2ETests : E2ETestBase
         app.SelectTab("TabQuests", "LstQuests");
         WaitForSelectedStatusChip(app, "Active"); // the fresh-profile default, so the flows below are deterministic
 
+        // Every chip is rendered and reachable — the whole tag table, not just the ones
+        // this test clicks (a clipped or missing chip is a status the user cannot pick).
+        foreach (var tag in QuestStatusTags.ChipTags)
+        {
+            Assert.True(app.IsElementVisible(StatusChipId(tag)), $"status chip '{tag}' should be on screen");
+        }
+
         // Clicking a status chip applies that status; the previous chip deselects.
         app.InvokeElement(StatusChipId("Done"));
         WaitForSelectedStatusChip(app, "Done");
-        Assert.Equal("Unselected", app.GetItemStatus(StatusChipId("Active")));
+        Assert.Equal(QuestStatusTags.ChipUnselected, app.GetItemStatus(StatusChipId("Active")));
 
         // The All chip is the new direct gesture back to the unfiltered list.
         app.InvokeElement(StatusChipId("All"));
         WaitForSelectedStatusChip(app, "All");
+
+        // Clicking All while All is selected is a no-op (PRD R3): the selection stays
+        // and the list is untouched. Asserted against the list length so the check
+        // cannot pass merely because the chip visuals were left alone.
+        var allCount = app.GetListItemCount("LstQuests");
+        app.InvokeElement(StatusChipId("All"));
+        WaitForSelectedStatusChip(app, "All");
+        Assert.Equal(allCount, app.GetListItemCount("LstQuests"));
 
         // Re-clicking the selected status chip still toggles back to All.
         app.InvokeElement(StatusChipId("Done"));
@@ -61,14 +81,52 @@ public sealed class QuestOverviewFiltersE2ETests : E2ETestBase
         WaitForSelectedStatusChip(app, "All");
 
         // Regression pins for the combo/stats removal and the chip relabel: the
-        // status ComboBox and the "Lv.X | n/m" stats text are gone; the All chip
-        // carries a count, and the Unavailable chip says "Unavailable", not "N/A".
+        // status ComboBox and the "Lv.X | n/m" stats text are gone, and every chip
+        // reads "<tag> <count>" — which is how the Unavailable chip now says
+        // "Unavailable" rather than "N/A".
         Assert.False(app.IsElementVisible("CmbStatus"),
             "the status ComboBox should be removed — the chips are the only status filter");
+        // "TxtStats" is an x:Name four other views also use; this holds because
+        // MainWindow shows one page at a time, so only the Quests tab is in the tree.
         Assert.False(app.IsElementVisible("TxtStats"),
             "the stats text should be removed — its counts live on the chips now");
-        Assert.Matches(@"^All \d+$", app.GetElementText(StatusChipId("All")));
-        Assert.Matches(@"^Unavailable \d+$", app.GetElementText(StatusChipId("Unavailable")));
+        foreach (var tag in QuestStatusTags.ChipTags)
+        {
+            Assert.Matches($@"^{tag} \d+$", app.GetElementText(StatusChipId(tag)));
+        }
+    }
+
+    [E2EFact]
+    public void Each_chips_count_is_the_number_of_rows_clicking_it_produces()
+    {
+        // The chips' whole promise (PRD R2) is "the number IS what clicking shows".
+        // CountByStatusTag and ApplyFilters are separate passes over the real quest
+        // database, so only an end-to-end check can catch them drifting apart — a
+        // criteria snapshot fed to one but not the other, or a chip wired to the wrong
+        // tag's count. Unit tests pin the same invariant on 3-8 synthetic quests.
+        using var app = LaunchMaximized();
+        app.SelectTab("TabQuests", "LstQuests");
+        WaitForSelectedStatusChip(app, "Active");
+
+        foreach (var tag in QuestStatusTags.ChipTags)
+        {
+            SelectStatusChip(app, tag);
+            var previewed = ChipCount(app, tag);
+            // GetListItemCount only sees realized containers, so it is exact solely for
+            // small counts (see its doc) — hence the guard rather than a blanket assert.
+            if (previewed > 20) continue;
+            WaitUntil(() => app.GetListItemCount("LstQuests") == previewed,
+                $"the quest list to show the {previewed} row(s) the '{tag}' chip previewed");
+        }
+    }
+
+    /// <summary>The integer a status chip's "Label N" content ends with.</summary>
+    private static int ChipCount(AppDriver app, string tag)
+    {
+        var text = app.GetElementText(StatusChipId(tag));
+        var digits = text[(text.LastIndexOf(' ') + 1)..];
+        Assert.True(int.TryParse(digits, out var count), $"chip '{tag}' should end in a count, got '{text}'");
+        return count;
     }
 
     [E2EFact]
@@ -97,7 +155,7 @@ public sealed class QuestOverviewFiltersE2ETests : E2ETestBase
         var configDir = NewConfigDir();
         E2EDb.CreateUserDataDb(configDir);
         // A tag no build knows: written by a newer version the user rolled back from,
-        // or a hand-edited row. The restore-time IsKnown validation must widen it to
+        // or a hand-edited row. The restore-time Coerce validation must widen it to
         // "All", never narrow it to the "Active" fresh-install default.
         E2EDb.SeedSetting(configDir, "questList.statusTag", "NotAStatus");
 

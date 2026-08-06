@@ -47,8 +47,12 @@ that the dropdown no longer mirrors the selection.
 ## Non-Goals
 
 - Localizing the chip labels. They stay hardcoded English ("All" and
-  "Unavailable" included) — the recorded Non-Goal of
-  `feature-quest-overview-filters.md` stands until the full Quest-tab
+  "Unavailable" included). The predecessor's Non-Goal justified this by the chips
+  having to agree with the combo's hardcoded labels — a reason this change voids
+  by deleting the combo. The decision still stands on its own terms: the chips sit
+  next to the filter bar's other hardcoded-English chrome ("Kappa", "Item Req",
+  "All Traders", "All Maps"), and localizing one control ahead of the rest would
+  make the bar read half-translated. All of it moves together in the Quest-tab
   localization pass.
 - The Map tab's own status filter. It is a separate control with separate
   semantics and is untouched.
@@ -122,5 +126,12 @@ which is the contract that keeps them recognizably the same status.
   one click away in the profile drawer, and the level-dependent information
   (which quests are level-locked) remains visible on the tab.
 - A very narrow window can clip the end of the chip row. Pre-existing with the
-  old layout and net-improved here (the removed text frees more width than the
-  All chip consumes).
+  old layout, but this change makes it worse in two ways, so the row wraps instead
+  of clipping. Worse first: the row grows a little (the removed statistics text
+  frees ~106px while the All chip plus the "N/A" → "Unavailable" relabel spend
+  ~116px), and — the part that actually matters — a clipped chip used to be
+  harmless because the dropdown still offered every status, whereas now a clipped
+  chip is a status the user cannot select at all. At the window's 600px minimum
+  the ~520px row plus the kappa gauge does not fit. So the chip row is a
+  `WrapPanel`: it flows onto a second line rather than running off the edge, and
+  every status stays one click away at any width.
