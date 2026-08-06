@@ -167,49 +167,13 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Create a TextBlock with rich text from wiki markup (with bullet point).
-        /// </summary>
-        /// <param name="wikiText">The wiki markup text</param>
-        /// <param name="fontFamily">Font family to use</param>
-        /// <param name="fontSize">Font size</param>
-        /// <param name="defaultBrush">Default text color</param>
-        /// <param name="accentBrush">Accent/link color</param>
-        /// <returns>A populated TextBlock</returns>
-        public static TextBlock CreateRichTextBlock(
-            string wikiText,
-            FontFamily fontFamily,
-            double fontSize,
-            Brush defaultBrush,
-            Brush accentBrush)
-        {
-            var textBlock = new TextBlock
-            {
-                FontFamily = fontFamily,
-                FontSize = fontSize,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 2, 0, 2),
-                MaxWidth = 300
-            };
-
-            // Add bullet point
-            textBlock.Inlines.Add(new Run("• ")
-            {
-                Foreground = accentBrush,
-                FontWeight = FontWeights.Bold
-            });
-
-            // Parse and add content
-            ParseWikiMarkup(wikiText, textBlock, defaultBrush, accentBrush);
-
-            return textBlock;
-        }
-
-        /// <summary>
         /// Create a TextBlock with rich text but without bullet point (for checkbox items).
+        /// Typography comes from resource references, not resolved values: AppFont and
+        /// FontSizeXSmall are runtime-swapped (language / base-font-size changes), and a
+        /// snapshot passed in by the caller would freeze the text on the values current
+        /// at build time while the rest of the UI updates live.
         /// </summary>
         /// <param name="wikiText">The wiki markup text</param>
-        /// <param name="fontFamily">Font family to use</param>
-        /// <param name="fontSize">Font size</param>
         /// <param name="defaultBrush">Default text color</param>
         /// <param name="accentBrush">Accent/link color</param>
         /// <param name="isCompleted">Whether the item is completed (applies strikethrough)</param>
@@ -217,8 +181,6 @@ namespace TarkovHelper.Services
         /// <returns>A populated TextBlock</returns>
         public static TextBlock CreateRichTextBlockWithoutBullet(
             string wikiText,
-            FontFamily fontFamily,
-            double fontSize,
             Brush defaultBrush,
             Brush accentBrush,
             bool isCompleted = false,
@@ -226,14 +188,17 @@ namespace TarkovHelper.Services
         {
             var textBlock = new TextBlock
             {
-                FontFamily = fontFamily,
-                FontSize = fontSize,
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = maxWidth,
                 VerticalAlignment = VerticalAlignment.Top,
                 TextDecorations = isCompleted ? System.Windows.TextDecorations.Strikethrough : null,
                 Opacity = isCompleted ? 0.6 : 1.0
             };
+
+            // Live references: re-resolve whenever App.ApplyFontStack / ApplyBaseFontSize
+            // rewrite the resources, independent of event-subscription order.
+            textBlock.SetResourceReference(TextBlock.FontFamilyProperty, "AppFont");
+            textBlock.SetResourceReference(TextBlock.FontSizeProperty, "FontSizeXSmall");
 
             // Parse and add content (no bullet)
             ParseWikiMarkup(wikiText, textBlock, defaultBrush, accentBrush);

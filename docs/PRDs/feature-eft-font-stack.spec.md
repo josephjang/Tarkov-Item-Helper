@@ -54,9 +54,12 @@ unreferenced duplicate `fonts\Maplestory Light.ttf` at the repo root.
 - EN, KO: `./Fonts/#Bender, ./Fonts/#Play, ./Fonts/#Noto Sans CJK KR, Malgun Gothic, Yu Gothic UI, Segoe UI`
 - JA: `./Fonts/#Bender, ./Fonts/#Play, Meiryo, Yu Gothic, ./Fonts/#Noto Sans CJK KR, Segoe UI`
 
-Bender covers Latin, Latin-1 accents, the full Cyrillic block, and
-typographic punctuation in both weights; Play backstops any glyph it lacks
-before the chain reaches the CJK faces.
+Bender covers Latin, most Latin-1 accents (76/96), modern Russian Cyrillic
+(94 of the Cyrillic block's 256 codepoints), and typographic punctuation in
+both weights; Play is load-bearing, not insurance — it supplies the rest of
+Latin-1/Latin Ext-A and most of the wider Cyrillic block (216/256) before the
+chain reaches the CJK faces, so Play cannot be dropped without losing ~160
+Cyrillic codepoints to system fallback.
 
 `App.xaml` keeps the EN/KO chain as the compiled default; `App.ApplyFontStack`
 (modeled on `App.ApplyBaseFontSize`) overwrites `Resources["AppFont"]` with
@@ -138,8 +141,20 @@ benefit.
   EN/KO chains are identical and order Noto ahead of system Japanese fonts;
   every chain leads with embedded Bender then embedded Play; every
   `AppLanguage` value yields a chain.
-- **E2E**: the existing suite boots the real app — a font resource that fails
-  to parse or load would fail startup/rendering there.
+- **Unit** (`AppFontSwapTests`): `App.ApplyFontStack` actually swaps
+  `Resources["AppFont"]` to the requested language's chain with the pack base
+  URI attached — the runtime half the string tests can't see.
+- **Unit** (`FontPackUriTests`): every embedded `./Fonts/#Family` chain token
+  resolves to a real embedded face through a pack URI (the test host addresses
+  the app assembly via the `pack://application:,,,/TarkovHelper;component/`
+  form), with a negative control proving the assertion can fail.
+- **E2E**: the existing suite boots the real app, but WPF font resolution
+  never throws — an unresolvable `./Fonts/#Family` token substitutes silently,
+  so e2e catches only total startup failure, not font fallback. The
+  assembly-embedding half is covered by
+  `FontAssetsTests.Fonts_are_embedded_in_the_app_assembly` (ResourceReader
+  over `TarkovHelper.g.resources`) and the resolution half by
+  `FontPackUriTests`; only visual appearance stays manual.
 - Visual appearance (correct letterforms per language, clipping, bold weight)
   cannot be asserted automatically; it is covered by the manual verification
   below.
@@ -149,6 +164,9 @@ benefit.
 - `dotnet build TarkovHelper.sln`
 - `dotnet test TarkovHelper.sln --filter "Category!=E2E"`, then
   `--filter "Category=E2E"`
+- `dotnet test TarkovHelper.Tests --filter "FullyQualifiedName~FontStacksTests"`
+  in isolation — deterministically covers the FontStacks type-initializer
+  (pack UriParser registration) that a full-suite run can mask via ordering.
 - Run `dotnet TarkovHelper\bin\Debug\net8.0-windows\TarkovHelper.dll` with
   `TARKOVHELPER_CONFIG_PATH` pointed at a scratch dir: EN shows Bender; KO
   shows Noto Hangul; JA shows Japanese forms (on a machine without Meiryo,
@@ -163,8 +181,29 @@ benefit.
 
 - No data migration; user data is untouched. Rollback is a single-commit
   revert (fonts, markup, and tests travel together).
-- The composite's line metrics come from the first Latin face while CJK glyphs
-  are taller; if clipping appears in the KO/JA visual sweep, the remediation is
-  an explicit `LineHeight` on the affected containers, not a stack reorder.
+- The composite's line metrics come from the first Latin face (Bender,
+  1.130 em) while the CJK faces are internally taller (Noto, 1.448 em).
+  Measured, this does not clip: Noto's Hangul/kanji/full-width ink stays
+  inside the envelope Bender's own accented Latin already occupies at every
+  size the app can render, and it is *smaller* than the removed Maplestory
+  face produced for the same Korean text (12.86px vs 13.77px at 12px em,
+  against a 13.56px line box — Maplestory's Korean ink overflowed its own
+  13.38px box). `FontAssetsTests.Cjk_ink_stays_inside_the_chains_latin_ink_envelope`
+  pins this; if a future chain change does clip, the remediation is an
+  explicit `LineHeight` on the affected containers, not a stack reorder.
 - On machines without Meiryo the JA chain silently degrades to Yu Gothic; this
   is by design and documented in the sibling PRD's Risks.
+- The EN/KO chain resolves CJK glyphs through the embedded ~16 MB Noto face
+  before system Malgun Gothic, so the first CJK glyph rendered in a session
+  parses that face on the UI thread (one-time per process). Accepted: the
+  ordering exists precisely so hanja and full-width punctuation keep Korean
+  glyph forms; reordering would trade correctness for a one-off load cost.
+- Non-linguistic symbols the app renders as text (✓ ○ ▲ ▼ ↑ ↓) are not in
+  Bender/Play, so they route to the first CJK-capable face. Measured, only ✓
+  actually differs in width between chains (9.56px on EN/KO via Noto vs
+  14.00px on JA via the system JA face, at 14px em); the other five are
+  full-width 14.00px in both. Cosmetic today (the glyph cells have slack; ✓
+  was already a fallback glyph under Maplestory), and Noto is the only named
+  family in the EN/KO chain that covers the six at all — the coverage test
+  pins them so a future font swap can't silently drop them. Pin a fixed
+  symbol-capable family on those TextBlocks if alignment ever matters.

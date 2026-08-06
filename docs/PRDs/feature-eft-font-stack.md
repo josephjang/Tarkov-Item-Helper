@@ -123,4 +123,7 @@ font is freely bundleable.
   maintainer: attribution and provenance ship in `Fonts\LICENSE-Bender.txt`,
   and the fonts will be removed promptly on any rights-holder objection.
 - CJK glyphs are taller than the Latin face's; line-height clipping in dense
-  rows is possible and is checked visually in KO/JA before merge.
+  rows was the concern. Measured before merge, the shipped chain's CJK ink is
+  *smaller* than its Latin ink at every size, so no container sized for Latin
+  can clip it (guarded in FontAssetsTests); the KO/JA visual sweep still runs
+  for letterform correctness.
