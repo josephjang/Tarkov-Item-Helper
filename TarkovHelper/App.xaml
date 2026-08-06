@@ -3,15 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:local="clr-namespace:TarkovHelper"
+             xmlns:services="clr-namespace:TarkovHelper.Services"
              ShutdownMode="OnMainWindowClose"
 >
     <Application.Resources>
         <!-- App-wide font chain (dynamic, swapped per language by App.ApplyFontStack).
-             This compiled default is the EN/KO chain and must stay equal to
-             FontStacks.ForLanguage(EN) — FontAssetsTests asserts it. Tokens are
-             relative (./Fonts/#Family) because absolute pack URIs embed commas
-             that break WPF's comma-split composite parsing. -->
-        <FontFamily x:Key="AppFont">./Fonts/#Bender, ./Fonts/#Play, ./Fonts/#Noto Sans CJK KR, Malgun Gothic, Yu Gothic UI, Segoe UI</FontFamily>
+             The compiled default comes from FontStacks.DefaultFamily via x:Static, so
+             the chain string has a single source of truth in FontStacks.cs — this
+             file cannot drift from the code that swaps the resource at runtime. -->
+        <x:Static x:Key="AppFont" Member="services:FontStacks.DefaultFamily"/>
 
         <!-- Icon glyph font (composite: falls back to MDL2 Assets on Windows 10).
              The implicit TextBlock style applies AppFont, so every glyph

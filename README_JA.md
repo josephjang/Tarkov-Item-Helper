@@ -112,8 +112,14 @@ dotnet run -- --fetch
 
 [MIT License](LICENSE)
 
+`TarkovHelper/Fonts/` 配下に同梱されているフォントはサードパーティの著作物であり、
+MIT ライセンスの対象では**ありません**。Play と Noto Sans CJK KR は SIL Open Font
+License 1.1、Bender は `TarkovHelper/Fonts/LICENSE-Bender.txt` の出所表記に
+従います。各 `Fonts/LICENSE-*.txt` を参照してください。
+
 ## クレジット
 
 - オリジナルプロジェクト: [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper)
 - ゲームデータ: [tarkov.dev](https://tarkov.dev)
 - Escape from TarkovはBattlestate Gamesの商標です。
+- フォント: Bender (Jovanny Lemonad / TypeType), Play (OFL), Noto Sans CJK KR (OFL)

@@ -1654,9 +1654,9 @@ namespace TarkovHelper.Pages
             checkBox.Unchecked += ObjectiveCheckBox_Changed;
             mainContainer.Children.Add(checkBox);
 
-            // Get resources for text styling
-            var fontFamily = (FontFamily)FindResource("AppFont");
-            var fontSize = (double)FindResource("FontSizeXSmall");
+            // Get brushes for text styling. Font family/size are NOT snapshotted here:
+            // CreateRichTextBlockWithoutBullet applies them as resource references so
+            // objective text follows live language and base-font-size changes.
             var defaultBrush = (Brush)FindResource("TextPrimaryBrush");
             var accentBrush = (Brush)FindResource("AccentBrush");
 
@@ -1691,7 +1691,7 @@ namespace TarkovHelper.Pages
 
                 // Create text block without bullet (badge replaces the bullet indicator)
                 var textBlock = WikiMarkupHelper.CreateRichTextBlockWithoutBullet(
-                    cleanedObjective, fontFamily, fontSize, defaultBrush, accentBrush, isCompleted);
+                    cleanedObjective, defaultBrush, accentBrush, isCompleted);
                 contentContainer.Children.Add(textBlock);
 
                 mainContainer.Children.Add(contentContainer);
@@ -1700,7 +1700,7 @@ namespace TarkovHelper.Pages
             {
                 // Create text block without bullet (checkbox replaces the bullet)
                 var textBlock = WikiMarkupHelper.CreateRichTextBlockWithoutBullet(
-                    cleanedObjective, fontFamily, fontSize, defaultBrush, accentBrush, isCompleted);
+                    cleanedObjective, defaultBrush, accentBrush, isCompleted);
                 mainContainer.Children.Add(textBlock);
             }
 

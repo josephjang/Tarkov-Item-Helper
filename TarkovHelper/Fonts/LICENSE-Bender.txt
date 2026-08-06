@@ -12,7 +12,9 @@ release:
 - TypeType (https://typetype.org/freefonts/), the foundry co-founded by
   Ivan Gladkikh, currently offers Bender in its Free Fonts project, stating:
   "Each font from the 'Free Fonts' project can be used for commercial or
-  personal purposes without any restrictions."
+  personal purposes without any restrictions." (TypeType's current offer
+  covers the Regular cut; the Bold cut ships from the byte-identical 2009
+  freeware release that all distributors carry.)
 
 Tarkov Item Helper bundles Bender Regular and Bender Bold unmodified and
 with this attribution, on the basis of the statements above. The fonts are
