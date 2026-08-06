@@ -1,7 +1,6 @@
 ﻿using System.IO;
 using System.Reflection;
 using System.Windows;
-using System.Windows.Media;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Logging;
 
@@ -113,12 +112,10 @@ namespace TarkovHelper
         /// </summary>
         public void ApplyFontStack(AppLanguage language)
         {
-            // The two-argument constructor supplies the base URI that the chain's
-            // relative ./Fonts/#Family tokens resolve against; BAML-compiled
-            // resources get it implicitly, code-created FontFamily instances do not.
-            Resources["AppFont"] = new FontFamily(
-                new Uri("pack://application:,,,/"),
-                FontStacks.ForLanguage(language));
+            // FontStacks.CreateFontFamily carries the pack base URI the chain's
+            // relative ./Fonts/#Family tokens resolve against — the same
+            // construction path that builds the compiled App.xaml default.
+            Resources["AppFont"] = FontStacks.CreateFontFamily(language);
         }
 
         /// <summary>

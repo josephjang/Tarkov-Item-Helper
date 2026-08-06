@@ -46,29 +46,7 @@ public sealed class PrdDocsTests
     /// </summary>
     private const string PathCheckExemptSpec = "feature-decision-docs-process.spec.md";
 
-    /// <summary>
-    /// Walks up from the test output dir to the repo root. Requires docs/PRDs next to
-    /// TarkovHelper.sln so the nested TarkovHelper/TarkovHelper.sln can't match.
-    /// </summary>
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            var slnPath = Path.Combine(dir.FullName, "TarkovHelper.sln");
-            var prdsPath = Path.Combine(dir.FullName, "docs", "PRDs");
-            if (File.Exists(slnPath) && Directory.Exists(prdsPath))
-            {
-                return dir.FullName;
-            }
-            dir = dir.Parent;
-        }
-
-        throw new DirectoryNotFoundException(
-            $"Could not locate the repo root (TarkovHelper.sln + docs/PRDs) above {AppContext.BaseDirectory}");
-    }
-
-    private static string PrdsDir() => Path.Combine(RepoRoot(), "docs", "PRDs");
+    private static string PrdsDir() => Path.Combine(TestRepo.Root(), "docs", "PRDs");
 
     /// <summary>
     /// New-format decision docs: everything flat in docs/PRDs/ plus the two templates,
@@ -152,7 +130,7 @@ public sealed class PrdDocsTests
     [Fact]
     public void Every_referenced_prd_path_resolves()
     {
-        var root = RepoRoot();
+        var root = TestRepo.Root();
         var token = new Regex(@"docs/PRDs/[A-Za-z0-9_/.\-]+\.md");
         // Directories that hold stale full copies of the repo or build output, not
         // sources of truth for path references.

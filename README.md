@@ -115,8 +115,15 @@ All data is stored in the `Data/` folder:
 
 [MIT License](LICENSE)
 
+The bundled fonts under `TarkovHelper/Fonts/` are third-party works and are
+**not** covered by the MIT grant: Play and Noto Sans CJK KR are licensed under
+the SIL Open Font License 1.1, and Bender ships under the provenance notice in
+`TarkovHelper/Fonts/LICENSE-Bender.txt`. See the `Fonts/LICENSE-*.txt` files
+for the governing terms.
+
 ## Credits
 
 - Original project: [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper)
 - Game data: [tarkov.dev](https://tarkov.dev)
 - Escape from Tarkov is a trademark of Battlestate Games.
+- Fonts: Bender (Jovanny Lemonad / TypeType), Play (OFL), Noto Sans CJK KR (OFL)

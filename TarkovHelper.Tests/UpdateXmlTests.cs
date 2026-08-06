@@ -21,25 +21,18 @@ public sealed class UpdateXmlTests
     private const string ForkRepoUrl = "https://github.com/josephjang/Tarkov-Item-Helper/";
 
     /// <summary>
-    /// Walks up from the test output dir to the repo root. Requires update.xml next to
-    /// TarkovHelper.sln so the nested TarkovHelper/TarkovHelper.sln can't match.
+    /// The repo-root update.xml, resolved via the shared TestRepo walker.
     /// </summary>
     private static string RepoUpdateXmlPath()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
+        var xmlPath = Path.Combine(TestRepo.Root(), "update.xml");
+        if (!File.Exists(xmlPath))
         {
-            var slnPath = Path.Combine(dir.FullName, "TarkovHelper.sln");
-            var xmlPath = Path.Combine(dir.FullName, "update.xml");
-            if (File.Exists(slnPath) && File.Exists(xmlPath))
-            {
-                return xmlPath;
-            }
-            dir = dir.Parent;
+            throw new FileNotFoundException(
+                $"update.xml is missing from the repo root {TestRepo.Root()}");
         }
 
-        throw new FileNotFoundException(
-            $"Could not locate the repo root (TarkovHelper.sln + update.xml) above {AppContext.BaseDirectory}");
+        return xmlPath;
     }
 
     [Fact]
