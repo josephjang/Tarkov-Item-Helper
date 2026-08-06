@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
 using Microsoft.Data.Sqlite;
+using TarkovHelper.Pages;
 
 namespace TarkovHelper.Tests;
 
@@ -268,6 +269,26 @@ internal sealed class AppDriver : IDisposable
     public string GetItemStatus(string automationId)
         => WaitForElement(automationId).Current.ItemStatus;
 
+    /// <summary>
+    /// <see cref="GetItemStatus"/> for use INSIDE a poll predicate: returns null instead
+    /// of throwing when the element is absent or is torn out of the UIA tree between the
+    /// find and the property read. PollUntil calls its condition bare, so an
+    /// ElementNotAvailableException from a transient teardown (a tab switch reassigning
+    /// MainWindow.Content mid-poll) would fail the test outright instead of being
+    /// retried on the next tick — which is the opposite of what a wait helper is for.
+    /// </summary>
+    public string? TryGetItemStatus(string automationId)
+    {
+        try
+        {
+            return TryFindElement(automationId)?.Current.ItemStatus;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Reads a TextBox's text via ValuePattern.</summary>
     public string GetTextBoxValue(string automationId)
         => ((ValuePattern)WaitForElement(automationId).GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
@@ -275,36 +296,6 @@ internal sealed class AppDriver : IDisposable
     /// <summary>Sets a TextBox's text via ValuePattern (fires TextChanged like typing).</summary>
     public void SetTextBoxValue(string automationId, string text)
         => ((ValuePattern)WaitForElement(automationId).GetCurrentPattern(ValuePattern.Pattern)).SetValue(text);
-
-    /// <summary>
-    /// Opens a combo box and selects the item whose UIA Name (ComboBoxItem Content)
-    /// matches. WPF materializes combo items lazily, so the item is polled for after
-    /// the expand.
-    /// </summary>
-    public void SelectComboItemByName(string comboAutomationId, string itemName)
-    {
-        var combo = WaitForElement(comboAutomationId);
-        var expand = (ExpandCollapsePattern)combo.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-        expand.Expand();
-        try
-        {
-            AutomationElement? item = null;
-            PollUntil(() =>
-            {
-                item = combo.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.NameProperty, itemName));
-                return item != null;
-            }, DateTime.UtcNow + TimeSpan.FromSeconds(15),
-                () => $"combo item '{itemName}' did not appear in '{comboAutomationId}'");
-            Select(item!);
-        }
-        finally
-        {
-            // Best-effort: a Collapse on a stale/closed combo must not replace the
-            // poll's actionable timeout message with UIA plumbing noise.
-            try { expand.Collapse(); } catch { }
-        }
-    }
 
     /// <summary>Expands an Expander-like element (ExpandCollapsePattern).</summary>
     public void ExpandElement(string automationId)
@@ -671,58 +662,6 @@ public abstract class E2ETestBase : IDisposable
     /// <summary>Test-local waits reuse the harness's shared poll loop (AppDriver.PollUntil).</summary>
     private protected static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
         => AppDriver.PollUntil(condition, what, timeoutSeconds);
-
-    /// <summary>The status chip's AutomationId for a tag (QuestListPage.xaml names them "Chip" + tag).</summary>
-    private protected static string StatusChipId(string tag) => "Chip" + tag;
-
-    /// <summary>
-    /// Polls until the tag's chip publishes ItemStatus "Selected" — the assert-only
-    /// probe for the quest list's status filter (the chips hold the only status-filter
-    /// state). Flows that assert a pre-existing selection (e.g. relaunch restore) must
-    /// use THIS, never <see cref="SelectStatusChip"/> — its click path could mutate
-    /// the very state under test.
-    /// </summary>
-    private protected static void WaitForSelectedStatusChip(AppDriver app, string tag)
-        => WaitUntil(() => app.GetItemStatus(StatusChipId(tag)) == "Selected",
-            $"status chip '{tag}' to become selected");
-
-    /// <summary>
-    /// Selects a status chip idempotently: waits for the chips to initialize (a chip
-    /// publishes a non-empty ItemStatus only after the page's first UpdateStatusChips
-    /// pass), invokes the chip only when it is not already selected — a blind click
-    /// on the selected chip would TOGGLE the filter back to "All" — and then waits
-    /// for it to report Selected.
-    /// </summary>
-    private protected static void SelectStatusChip(AppDriver app, string tag)
-    {
-        var chipId = StatusChipId(tag);
-        WaitUntil(() => !string.IsNullOrEmpty(app.GetItemStatus(chipId)),
-            $"status chips to initialize (chip '{tag}')");
-        if (app.GetItemStatus(chipId) != "Selected")
-            app.InvokeElement(chipId);
-        WaitForSelectedStatusChip(app, tag);
-    }
-
-    /// <summary>
-    /// Shared quest-tab choreography: applies the status filter, searches the quest
-    /// (a unique substring per the E2EQuestData queries), selects the single
-    /// surviving row, and waits for its detail panel.
-    /// </summary>
-    private protected static void ShowQuestDetail(AppDriver app, string questName, string statusFilter)
-    {
-        app.SelectTab("TabQuests", "LstQuests");
-        SelectStatusChip(app, statusFilter);
-        app.SetTextBoxValue("TxtSearch", questName);
-        // The search filter is debounced (QuestListPage.TxtSearch_TextChanged), so wait
-        // for it to apply before touching row 0 — otherwise this could grab the first
-        // row of the still-unfiltered list. The E2EQuestData queries guarantee the
-        // name is a unique search substring, so exactly one row survives.
-        WaitUntil(() => app.GetListItemCount("LstQuests") == 1,
-            $"quest list to filter down to '{questName}'");
-        app.SelectListItemAt("LstQuests", 0);
-        WaitUntil(() => app.GetElementText("TxtDetailName") == questName,
-            $"detail panel to show '{questName}'");
-    }
 
     /// <summary>
     /// Launches the app against a fresh throwaway Config dir and maximizes its window.

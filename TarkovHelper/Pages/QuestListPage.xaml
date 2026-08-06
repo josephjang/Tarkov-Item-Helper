@@ -12,12 +12,6 @@
         <!-- Inherit FontFamily for all TextBlocks in this page -->
         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"/>
 
-        <!-- Status Badge Colors -->
-        <SolidColorBrush x:Key="StatusLockedBrush" Color="#666666"/>
-        <SolidColorBrush x:Key="StatusActiveBrush" Color="#4CAF50"/>
-        <SolidColorBrush x:Key="StatusDoneBrush" Color="#2196F3"/>
-        <SolidColorBrush x:Key="StatusFailedBrush" Color="#F44336"/>
-
         <!-- CheckBox Style for Filters -->
         <Style x:Key="FilterCheckBox" TargetType="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
@@ -32,27 +26,48 @@
              label and a color-derived border even when unselected; the selected chip
              adds a translucent fill of that color. Background/BorderBrush/FontWeight
              are set from code in UpdateStatusChips — the single place chip visuals
-             derive from the page's _statusTag. The hover cue is an Opacity dim, NOT
-             a Background swap: a neutral hover background would visually "unfill"
-             the selected chip's colored fill. -->
+             derive from the page's _statusTag. The hover cue is a pair of overlay
+             layers tinted from the chip's own Foreground — NOT a neutral Background
+             swap (which would visually "unfill" a selected colored chip) and NOT an
+             Opacity dim on ChipBorder (which composites the whole subtree, so it
+             faded the label with it and read as "disabled"). -->
         <Style x:Key="StatusChipStyle" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Background" Value="Transparent"/>
             <!-- Pre-first-paint placeholder only — UpdateStatusChips overwrites it. -->
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
+            <!-- Vertical margin so the chips do not touch when the WrapPanel wraps. -->
+            <Setter Property="Margin" Value="0,2,6,2"/>
             <Setter Property="FontSize" Value="{DynamicResource FontSizeXSmall}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="ChipBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                                CornerRadius="10" Padding="10,3">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                CornerRadius="10">
+                            <Grid>
+                                <!-- Hover layers, BELOW the label and tinted from the chip's
+                                     own Foreground — the one chip property UpdateStatusChips
+                                     never writes, so a trigger can reach the status color
+                                     without any of the code-set frozen brushes. The ring
+                                     redraws the border at full strength, which is exactly the
+                                     step an unselected chip's dimmed 0x66 border is missing;
+                                     the fill adds a faint wash of the same color. Both sit
+                                     under the ContentPresenter, so the label's contrast is
+                                     unaffected (the padding moved here from the Border for
+                                     that reason — layout is identical). -->
+                                <Border x:Name="ChipHoverFill" CornerRadius="9" Margin="1"
+                                        Background="{TemplateBinding Foreground}" Opacity="0"/>
+                                <Border x:Name="ChipHoverRing" CornerRadius="10" BorderThickness="1"
+                                        BorderBrush="{TemplateBinding Foreground}" Opacity="0"/>
+                                <ContentPresenter Margin="10,3"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ChipBorder" Property="Opacity" Value="0.85"/>
+                                <Setter TargetName="ChipHoverFill" Property="Opacity" Value="0.12"/>
+                                <Setter TargetName="ChipHoverRing" Property="Opacity" Value="1"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -211,7 +226,9 @@
                         <ComboBoxItem Content="All Maps" Tag="" IsSelected="True"/>
                     </ComboBox>
 
-                    <!-- Faction Toggle -->
+                    <!-- Faction Toggle. No left margin of its own: CmbMap's 16px right
+                         margin (above) provides the gap now that CmbStatus no longer
+                         sits between them — keep the two in step if either moves. -->
                     <Border Margin="0" Background="{StaticResource BackgroundDarkBrush}"
                             CornerRadius="4" Padding="2">
                         <StackPanel Orientation="Horizontal">
@@ -293,9 +310,17 @@
                      click applies that status, clicking the selected chip (or the
                      All chip) returns to "All". Counts are what the list would show
                      under that status with all other filters as-is
-                     (QuestListFilter.CountByStatusTag). -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
-                            Margin="0,0,8,0">
+                     (QuestListFilter.CountByStatusTag).
+
+                     A WrapPanel, NOT a StackPanel: the row is ~520px wide and the
+                     window's MinWidth is 600, so a horizontal StackPanel in this "*"
+                     column had its trailing chips clipped on a narrow window — and
+                     with CmbStatus gone those statuses would be unreachable, not just
+                     invisible. Wrapping onto a second line keeps every status
+                     clickable at any width (the statistics-bar row is Height="Auto",
+                     so it grows to fit). -->
+                <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
+                           Margin="0,0,8,0">
                     <!-- The All chip's count is the All click-preview — what the list
                          shows with no status filter. NOT the sum of the other chips
                          (an other-faction quest counts only under Unavailable) and
@@ -322,7 +347,7 @@
                          not drift apart. -->
                     <Button x:Name="ChipUnavailable" Style="{StaticResource StatusChipStyle}"
                             Foreground="#9E9E9E" Tag="Unavailable" Click="StatusChip_Click"/>
-                </StackPanel>
+                </WrapPanel>
 
                 <!-- Kappa Progress Gauge -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
