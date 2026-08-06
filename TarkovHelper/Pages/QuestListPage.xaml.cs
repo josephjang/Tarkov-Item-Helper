@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -28,6 +29,11 @@ namespace TarkovHelper.Pages
         private Dictionary<string, TarkovItem>? _itemLookup;
         private bool _isInitializing = true;
         private bool _isDataLoaded = false;
+        // The status filter's single source of truth — the chips are the only status
+        // UI and carry no state of their own (StatusChip_Click sets this, ApplyFilters
+        // reads it). "Active" fresh-install default; RestoreFilterSettings overwrites
+        // it from the persisted questList.statusTag on Loaded.
+        private string _statusTag = QuestListSettings.DefaultStatusTag;
         private bool _isUnloaded = false;
         private string? _pendingQuestSelection = null;
         private List<GuideImage>? _pendingGuideImages = null;
@@ -50,22 +56,49 @@ namespace TarkovHelper.Pages
         private const string AllMapsTag = "";
 
         /// <summary>
-        /// The status chips on the statistics bar in display order, with the status tag
-        /// each one filters to (the same Tag values CmbStatus uses) and its label. The
-        /// labels mirror the hardcoded-English status combo items — localizing one
-        /// without the other would make the bar disagree with the combo. Built once:
-        /// the chips are page fields, so the array never needs rebuilding.
+        /// The status chips on the statistics bar in display order (mirroring
+        /// QuestStatusTags.ChipTags), with the status tag each one filters to, its
+        /// label, and the two brushes UpdateStatusChips paints with: the translucent
+        /// selected-state fill and the dimmed unselected-state border, both derived
+        /// from the chip's XAML Foreground color (see <see cref="ChipEntry"/>). Labels
+        /// stay hardcoded English per the recorded Non-Goal (chip chrome is not
+        /// localized). Built once — the chips are page fields, so the array never
+        /// needs rebuilding, and the derived brushes are computed and frozen once.
         /// </summary>
-        private (Button Chip, string Tag, string Label)[]? _statusChips;
+        private (Button Chip, string Tag, string Label, Brush SelectedFill, Brush UnselectedBorder)[]? _statusChips;
 
-        private (Button Chip, string Tag, string Label)[] StatusChips => _statusChips ??= new[]
+        private (Button Chip, string Tag, string Label, Brush SelectedFill, Brush UnselectedBorder)[] StatusChips
+            => _statusChips ??= new[]
         {
-            (ChipActive, QuestStatusTags.Active, "Active"),
-            (ChipLocked, QuestStatusTags.Locked, "Locked"),
-            (ChipDone, QuestStatusTags.Done, "Done"),
-            (ChipFailed, QuestStatusTags.Failed, "Failed"),
-            (ChipUnavailable, QuestStatusTags.Unavailable, "N/A"),
+            ChipEntry(ChipAll, QuestStatusTags.All, "All"),
+            ChipEntry(ChipActive, QuestStatusTags.Active, "Active"),
+            ChipEntry(ChipLocked, QuestStatusTags.Locked, "Locked"),
+            ChipEntry(ChipDone, QuestStatusTags.Done, "Done"),
+            ChipEntry(ChipFailed, QuestStatusTags.Failed, "Failed"),
+            ChipEntry(ChipUnavailable, QuestStatusTags.Unavailable, "Unavailable"),
         };
+
+        /// <summary>
+        /// Builds one <see cref="StatusChips"/> entry, deriving the selected fill
+        /// (low-alpha 0x33 tint) and unselected border (dimmed 0x66) from the chip's
+        /// Foreground color, frozen for reuse across every refresh. A Foreground that
+        /// is not a SolidColorBrush (nothing declares one today) degrades to the
+        /// Unavailable gray rather than throwing during page construction.
+        /// </summary>
+        private static (Button, string, string, Brush, Brush) ChipEntry(Button chip, string tag, string label)
+        {
+            var color = (chip.Foreground as SolidColorBrush)?.Color ?? Color.FromRgb(0x9E, 0x9E, 0x9E);
+            return (chip, tag, label,
+                FrozenBrush(Color.FromArgb(0x33, color.R, color.G, color.B)),
+                FrozenBrush(Color.FromArgb(0x66, color.R, color.G, color.B)));
+        }
+
+        private static Brush FrozenBrush(Color color)
+        {
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            return brush;
+        }
 
         // Status brushes
         private static readonly Brush LockedBrush = new SolidColorBrush(Color.FromRgb(102, 102, 102));
@@ -473,18 +506,18 @@ namespace TarkovHelper.Pages
         }
 
         /// <summary>
-        /// Sets every filter-bar control to its most-permissive value — note status
-        /// becomes "All", not the page's initial "Active" default (the faction toggle is
-        /// a profile setting, not a filter, so it stays). Invoked from BtnShowInList and
-        /// from the empty state's BtnResetFilters — navigation itself never resets
-        /// filters. Selection goes through tags, never item indices, so reordering the
+        /// Sets every filter to its most-permissive value — note status becomes "All",
+        /// not the page's initial "Active" default (the faction toggle is a profile
+        /// setting, not a filter, so it stays). Invoked from BtnShowInList and from the
+        /// empty state's BtnResetFilters — navigation itself never resets filters.
+        /// Combo selection goes through tags, never item indices, so reordering the
         /// XAML ComboBoxItems cannot silently change what "reset" means.
         /// </summary>
         private void ResetFilters()
         {
             using (SuppressFilterHandlers())
             {
-                SelectComboByTag(CmbStatus, QuestStatusTags.All, QuestStatusTags.All);
+                _statusTag = QuestStatusTags.All;
 
                 // Clear search text
                 TxtSearch.Text = "";
@@ -736,8 +769,7 @@ namespace TarkovHelper.Pages
                 ItemRequired: ChkItemRequired.IsChecked == true,
                 Trader: SelectedTag(CmbTrader),
                 Map: SelectedTag(CmbMap),
-                StatusTag: (CmbStatus.SelectedItem as ComboBoxItem)?.Tag?.ToString()
-                           ?? QuestListSettings.DefaultStatusTag,
+                StatusTag: _statusTag,
                 Faction: RbBear.IsChecked == true ? "bear" : (RbUsec.IsChecked == true ? "usec" : null));
 
             var filtered = _allQuestViewModels
@@ -769,11 +801,8 @@ namespace TarkovHelper.Pages
             // and that early pass must not overwrite the store with the XAML defaults.
             if (_isDataLoaded) SaveFilterSettings(criteria);
 
-            // Update statistics — the per-status counts live on the clickable chips.
-            // The total is the loaded quest count itself; QuestProgressService's
-            // GetStatistics() would re-derive every quest's status just to return it.
-            var playerLevel = SettingsService.Instance.PlayerLevel;
-            TxtStats.Text = $"Lv.{playerLevel} | {filtered.Count}/{_allQuestViewModels.Count}";
+            // Update statistics — the per-status counts (including the All chip's
+            // total) live on the clickable chips.
             UpdateStatusChips(criteria);
 
             // Update Kappa progress gauge
@@ -818,7 +847,12 @@ namespace TarkovHelper.Pages
             ChkItemRequired.IsChecked = settings.ItemRequired;
             SelectComboByTag(CmbTrader, settings.Trader, AllTradersTag);
             SelectComboByTag(CmbMap, settings.Map, AllMapsTag);
-            SelectComboByTag(CmbStatus, settings.StatusTag, QuestStatusTags.All);
+            // The status combo's tag lookup used to absorb unknown persisted tags;
+            // with chips the validation is explicit — an unknown tag widens to "All"
+            // (the permissive end, e2e-pinned), never the narrower "Active" default.
+            _statusTag = QuestStatusTags.IsKnown(settings.StatusTag)
+                ? settings.StatusTag
+                : QuestStatusTags.All;
         }
 
         /// <summary>
@@ -835,9 +869,10 @@ namespace TarkovHelper.Pages
         /// Selects the ComboBoxItem whose Tag equals <paramref name="tag"/>. When no item
         /// carries that tag (a persisted value from another build, a trader/map dropped by
         /// a database update) it falls back to <paramref name="fallbackTag"/> — passed
-        /// explicitly because index 0 is NOT the permissive entry in every combo:
-        /// CmbStatus's index 0 is "Active" and "All" sits at index 1, so an index-based
-        /// fallback would silently NARROW the list instead of widening it.
+        /// explicitly rather than assuming index 0, so reordering a combo's items can
+        /// never silently change what the fallback means. Used by the trader and map
+        /// combos; the status filter is chips, validated via
+        /// <see cref="QuestStatusTags.IsKnown"/> in RestoreFilterSettings instead.
         /// </summary>
         private static void SelectComboByTag(ComboBox combo, string tag, string fallbackTag)
         {
@@ -865,7 +900,11 @@ namespace TarkovHelper.Pages
         /// <summary>
         /// Renders the status chips for the current filter snapshot: per-tag counts via
         /// <see cref="QuestListFilter.CountByStatusTag"/> (what the list would show if
-        /// that chip were clicked), selected-chip visuals from criteria.StatusTag.
+        /// that chip were clicked). Selection is cued by each chip's own color — the
+        /// selected chip gets its translucent fill and full-color border, unselected
+        /// chips stay transparent with a dimmed color border — and published to UI
+        /// Automation as ItemStatus "Selected"/"Unselected" (the e2e surface: the
+        /// chips hold the only status-filter state, so the tests read it from here).
         /// </summary>
         private void UpdateStatusChips(QuestFilterCriteria criteria)
         {
@@ -873,37 +912,39 @@ namespace TarkovHelper.Pages
             var counts = QuestListFilter.CountByStatusTag(
                 _allQuestViewModels, criteria, chips.Select(c => c.Tag).ToList());
 
-            foreach (var (chip, tag, label) in chips)
+            foreach (var (chip, tag, label, selectedFill, unselectedBorder) in chips)
             {
                 chip.Content = $"{label} {counts[tag]}";
                 var isSelected = string.Equals(criteria.StatusTag, tag, StringComparison.Ordinal);
-                chip.Background = isSelected
-                    ? (Brush)FindResource("BackgroundLightBrush")
-                    : Brushes.Transparent;
-                chip.BorderBrush = isSelected ? chip.Foreground : (Brush)FindResource("BorderBrush");
+                chip.Background = isSelected ? selectedFill : Brushes.Transparent;
+                chip.BorderBrush = isSelected ? chip.Foreground : unselectedBorder;
                 chip.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal;
+                AutomationProperties.SetItemStatus(chip, isSelected ? "Selected" : "Unselected");
             }
         }
 
         /// <summary>
         /// Chip click = status filter: applies the chip's status, or returns to "All"
-        /// when the chip is already the active filter. Routed through CmbStatus (whose
-        /// SelectionChanged applies the filters) so the combo and chips cannot disagree.
+        /// when the chip is already the active filter (clicking All while on All is a
+        /// no-op). Sets <see cref="_statusTag"/> — the single source of status-filter
+        /// truth — and applies the filters directly.
         /// </summary>
         private void StatusChip_Click(object sender, RoutedEventArgs e)
         {
-            // Ignore clicks that land before Loaded has restored the saved filters: the
-            // combo's SelectionChanged is still suppressed, so the click would move the
-            // combo without filtering or repainting the chips — and the restore would
-            // then discard it anyway.
+            // Ignore clicks that land before Loaded has restored the saved filters:
+            // RestoreFilterSettings would overwrite the clicked tag right after, so
+            // honoring the click would only flash a filter state the restore then
+            // discards.
             if (!_isDataLoaded) return;
             if (sender is not Button chip || chip.Tag is not string tag) return;
 
-            var currentTag = SelectedTag(CmbStatus);
-            var targetTag = string.Equals(currentTag, tag, StringComparison.Ordinal)
+            var targetTag = string.Equals(_statusTag, tag, StringComparison.Ordinal)
                 ? QuestStatusTags.All
                 : tag;
-            SelectComboByTag(CmbStatus, targetTag, QuestStatusTags.All);
+            if (string.Equals(targetTag, _statusTag, StringComparison.Ordinal)) return;
+
+            _statusTag = targetTag;
+            ApplyFilters();
         }
 
         /// <summary>
@@ -1001,11 +1042,6 @@ namespace TarkovHelper.Pages
         }
 
         private void CmbMap_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (!_isInitializing) ApplyFilters();
-        }
-
-        private void CmbStatus_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_isInitializing) ApplyFilters();
         }

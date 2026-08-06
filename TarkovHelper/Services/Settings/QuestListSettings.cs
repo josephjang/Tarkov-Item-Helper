@@ -41,7 +41,7 @@ public class QuestListSettings
     public const double MinDetailPanelWidth = 250;
     public const double MaxDetailPanelWidth = 800;
 
-    /// <summary>Matches the page's initial CmbStatus selection ("Active").</summary>
+    /// <summary>The page's fresh-install status filter ("Active" — QuestListPage._statusTag's initial value).</summary>
     public const string DefaultStatusTag = "Active";
 
     #endregion
@@ -140,7 +140,7 @@ public class QuestListSettings
         }
     }
 
-    /// <summary>The status combo's Tag value ("Active", "All", "Locked", "Done", "Failed", "Unavailable").</summary>
+    /// <summary>The status filter's chip tag ("All", "Active", "Locked", "Done", "Failed", "Unavailable").</summary>
     public string StatusTag
     {
         get

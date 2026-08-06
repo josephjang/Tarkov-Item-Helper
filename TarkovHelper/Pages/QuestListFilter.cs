@@ -5,7 +5,7 @@ namespace TarkovHelper.Pages
     /// <summary>
     /// The quest-list filter inputs as read from the filter bar controls, using the
     /// control conventions: an empty string means "no filter" for SearchText, Trader,
-    /// and Map; StatusTag is a ComboBoxItem Tag ("All", "Active", "Locked", "Done",
+    /// and Map; StatusTag is a status-chip Tag ("All", "Active", "Locked", "Done",
     /// "Failed", "Unavailable"); Faction is "bear", "usec", or null for no selection.
     /// </summary>
     public sealed record QuestFilterCriteria(
@@ -27,11 +27,11 @@ namespace TarkovHelper.Pages
     }
 
     /// <summary>
-    /// The status filter tags: the ComboBoxItem Tag values of QuestListPage's CmbStatus,
-    /// which double as the status-chip tags and as the persisted questList.statusTag
-    /// value. QuestListPage.xaml declares the same strings on its CmbStatus items — these
-    /// constants are the single source for every C# path that names one, so a rename only
-    /// has to be mirrored in that one XAML block.
+    /// The status filter tags: the Tag values of QuestListPage's status-chip Buttons,
+    /// which double as the persisted questList.statusTag value. QuestListPage.xaml
+    /// declares the same strings on its chip Buttons — these constants are the single
+    /// source for every C# path that names one, so a rename only has to be mirrored in
+    /// that one XAML block.
     /// </summary>
     public static class QuestStatusTags
     {
@@ -43,11 +43,23 @@ namespace TarkovHelper.Pages
         public const string Unavailable = "Unavailable";
 
         /// <summary>
-        /// The tags that get a status chip, in display order. "All" has no chip
-        /// deliberately (see feature-quest-overview-filters.md) — the combo offers it,
-        /// and re-clicking the selected chip returns to it.
+        /// The tags that get a status chip, in display order. "All" comes first: with
+        /// the status combo removed, the All chip is the direct route back to the
+        /// unfiltered list and carries the total count (see
+        /// feature-quest-chip-only-status-filter.md). Re-clicking the selected status
+        /// chip also returns to All.
         /// </summary>
-        public static readonly string[] ChipTags = { Active, Locked, Done, Failed, Unavailable };
+        public static readonly string[] ChipTags = { All, Active, Locked, Done, Failed, Unavailable };
+
+        /// <summary>
+        /// Whether the tag is one the chips (and the persisted questList.statusTag)
+        /// understand — the restore-time validation home: with the combo gone there is
+        /// no tag-lookup fallback to absorb an unknown persisted value, so callers
+        /// widen unknown tags to <see cref="All"/> explicitly. Ordinal, like every
+        /// other status-tag comparison.
+        /// </summary>
+        public static bool IsKnown(string? tag)
+            => tag != null && ChipTags.Contains(tag, StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -115,7 +127,7 @@ namespace TarkovHelper.Pages
             if (statusTag == QuestStatusTags.Locked)
                 return vm.Status == QuestStatus.Locked || vm.Status == QuestStatus.LevelLocked;
 
-            // An unrecognized tag (a future ComboBox typo, or a new caller of this
+            // An unrecognized tag (a future chip-Tag typo, or a new caller of this
             // public predicate) matches nothing rather than throwing ArgumentException
             // on the UI thread mid-ApplyFilters.
             if (!Enum.TryParse<QuestStatus>(statusTag, out var statusFilter))
@@ -149,7 +161,9 @@ namespace TarkovHelper.Pages
         /// definition (clicking a chip applies exactly the counted filter). Because of
         /// the faction/Unavailable exception in <see cref="Matches"/>, an other-faction
         /// quest is counted only under the "Unavailable" tag, so chip counts need not
-        /// sum to any fixed total.
+        /// sum to any fixed total. "All" is itself a countable tag: its count is the
+        /// All click-preview (what the list shows with no status filter), not the sum
+        /// of the other chips and not the raw loaded total.
         ///
         /// One pass: the status-independent criteria are evaluated once per quest and
         /// only the two cheap status/faction checks run per tag, so the shared work

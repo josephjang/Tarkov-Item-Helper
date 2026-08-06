@@ -260,6 +260,14 @@ internal sealed class AppDriver : IDisposable
     public string GetElementText(string automationId)
         => WaitForElement(automationId).Current.Name;
 
+    /// <summary>
+    /// The element's UIA ItemStatus (what the app publishes via
+    /// AutomationProperties.SetItemStatus — e.g. a status chip's
+    /// "Selected"/"Unselected"). Empty until the app first sets it.
+    /// </summary>
+    public string GetItemStatus(string automationId)
+        => WaitForElement(automationId).Current.ItemStatus;
+
     /// <summary>Reads a TextBox's text via ValuePattern.</summary>
     public string GetTextBoxValue(string automationId)
         => ((ValuePattern)WaitForElement(automationId).GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
@@ -664,6 +672,37 @@ public abstract class E2ETestBase : IDisposable
     private protected static void WaitUntil(Func<bool> condition, string what, int timeoutSeconds = 30)
         => AppDriver.PollUntil(condition, what, timeoutSeconds);
 
+    /// <summary>The status chip's AutomationId for a tag (QuestListPage.xaml names them "Chip" + tag).</summary>
+    private protected static string StatusChipId(string tag) => "Chip" + tag;
+
+    /// <summary>
+    /// Polls until the tag's chip publishes ItemStatus "Selected" — the assert-only
+    /// probe for the quest list's status filter (the chips hold the only status-filter
+    /// state). Flows that assert a pre-existing selection (e.g. relaunch restore) must
+    /// use THIS, never <see cref="SelectStatusChip"/> — its click path could mutate
+    /// the very state under test.
+    /// </summary>
+    private protected static void WaitForSelectedStatusChip(AppDriver app, string tag)
+        => WaitUntil(() => app.GetItemStatus(StatusChipId(tag)) == "Selected",
+            $"status chip '{tag}' to become selected");
+
+    /// <summary>
+    /// Selects a status chip idempotently: waits for the chips to initialize (a chip
+    /// publishes a non-empty ItemStatus only after the page's first UpdateStatusChips
+    /// pass), invokes the chip only when it is not already selected — a blind click
+    /// on the selected chip would TOGGLE the filter back to "All" — and then waits
+    /// for it to report Selected.
+    /// </summary>
+    private protected static void SelectStatusChip(AppDriver app, string tag)
+    {
+        var chipId = StatusChipId(tag);
+        WaitUntil(() => !string.IsNullOrEmpty(app.GetItemStatus(chipId)),
+            $"status chips to initialize (chip '{tag}')");
+        if (app.GetItemStatus(chipId) != "Selected")
+            app.InvokeElement(chipId);
+        WaitForSelectedStatusChip(app, tag);
+    }
+
     /// <summary>
     /// Shared quest-tab choreography: applies the status filter, searches the quest
     /// (a unique substring per the E2EQuestData queries), selects the single
@@ -672,7 +711,7 @@ public abstract class E2ETestBase : IDisposable
     private protected static void ShowQuestDetail(AppDriver app, string questName, string statusFilter)
     {
         app.SelectTab("TabQuests", "LstQuests");
-        app.SelectComboItemByName("CmbStatus", statusFilter);
+        SelectStatusChip(app, statusFilter);
         app.SetTextBoxValue("TxtSearch", questName);
         // The search filter is debounced (QuestListPage.TxtSearch_TextChanged), so wait
         // for it to apply before touching row 0 — otherwise this could grab the first
