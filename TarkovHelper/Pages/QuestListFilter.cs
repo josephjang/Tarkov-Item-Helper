@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using TarkovHelper.Models;
 
 namespace TarkovHelper.Pages
@@ -48,18 +49,63 @@ namespace TarkovHelper.Pages
         /// unfiltered list and carries the total count (see
         /// feature-quest-chip-only-status-filter.md). Re-clicking the selected status
         /// chip also returns to All.
+        ///
+        /// Immutable rather than <c>string[]</c>: `readonly` would pin only the
+        /// reference, and this array is now the allow-list <see cref="IsKnown"/>
+        /// validates persisted user data against — a single in-place write anywhere in
+        /// the process (test code included) would silently change which saved status
+        /// filters the app accepts for the rest of the session.
         /// </summary>
-        public static readonly string[] ChipTags = { All, Active, Locked, Done, Failed, Unavailable };
+        public static readonly ImmutableArray<string> ChipTags =
+            ImmutableArray.Create(All, Active, Locked, Done, Failed, Unavailable);
+
+        /// <summary>The ItemStatus a selected status chip publishes to UI Automation.</summary>
+        /// <remarks>
+        /// The chips hold the only status-filter state and expose it to UIA as a
+        /// free-form ItemStatus string (QuestListPage.UpdateStatusChips writes it, the
+        /// e2e harness reads it). Declared here so producer and consumer share one
+        /// symbol across the assembly boundary — a rename breaks the build instead of
+        /// timing every quest e2e test out after 30 seconds.
+        /// </remarks>
+        public const string ChipSelected = "Selected";
+
+        /// <summary>The ItemStatus an unselected status chip publishes — see <see cref="ChipSelected"/>.</summary>
+        public const string ChipUnselected = "Unselected";
 
         /// <summary>
         /// Whether the tag is one the chips (and the persisted questList.statusTag)
-        /// understand — the restore-time validation home: with the combo gone there is
-        /// no tag-lookup fallback to absorb an unknown persisted value, so callers
-        /// widen unknown tags to <see cref="All"/> explicitly. Ordinal, like every
-        /// other status-tag comparison.
+        /// understand. Ordinal, like every other status-tag comparison. Public so the
+        /// membership rule is unit-testable on its own; production restore goes through
+        /// <see cref="Coerce"/>, which pairs it with the widening policy.
         /// </summary>
         public static bool IsKnown(string? tag)
             => tag != null && ChipTags.Contains(tag, StringComparer.Ordinal);
+
+        /// <summary>
+        /// The persisted-tag validation policy: a tag the chips understand is kept, and
+        /// anything else widens to <see cref="All"/>. Lives next to the tag table it
+        /// validates against rather than at the call site — with the combo gone there is
+        /// no tag-lookup fallback to absorb an unknown persisted value, so every reader
+        /// of questList.statusTag must apply this rule, and it must widen (never narrow
+        /// to the "Active" fresh-install default, which would hide quests the user had
+        /// chosen to see).
+        ///
+        /// Note the empty/absent case never reaches here: QuestListSettings.StatusTag
+        /// substitutes the fresh-install default for a missing row, because "no stored
+        /// preference" is a different thing from "a tag this build does not know".
+        /// </summary>
+        public static string Coerce(string? tag) => IsKnown(tag) ? tag! : All;
+
+        /// <summary>
+        /// The chip toggle rule: clicking the chip that is already the active filter
+        /// returns to <see cref="All"/>, clicking any other chip selects it. Clicking
+        /// All while All is selected therefore yields All — the caller's "unchanged
+        /// means no-op" check (see QuestListPage.StatusChip_Click) is what makes that
+        /// gesture cost nothing. Pure, so the rule is unit-testable without WPF, the
+        /// same reason <see cref="QuestListFilter"/> itself was extracted.
+        /// </summary>
+        public static string NextTag(string currentTag, string clickedTag)
+            => string.Equals(currentTag, clickedTag, StringComparison.Ordinal) ? All : clickedTag;
     }
 
     /// <summary>
@@ -164,6 +210,11 @@ namespace TarkovHelper.Pages
         /// sum to any fixed total. "All" is itself a countable tag: its count is the
         /// All click-preview (what the list shows with no status filter), not the sum
         /// of the other chips and not the raw loaded total.
+        ///
+        /// <paramref name="statusTags"/> must not repeat a tag: the inner loop counts
+        /// per entry, so a duplicate would count its quests twice. QuestListPage's chip
+        /// array is pinned equal to <see cref="QuestStatusTags.ChipTags"/> (itself
+        /// asserted distinct in QuestListFilterTests), which is what guarantees it.
         ///
         /// One pass: the status-independent criteria are evaluated once per quest and
         /// only the two cheap status/faction checks run per tag, so the shared work

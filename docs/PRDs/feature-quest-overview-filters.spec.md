@@ -8,10 +8,10 @@
 > change that reverses a decision here appends `Superseded by <doc>` below this
 > line, in the PR that reverses it.
 
-> Superseded in part by `feature-quest-chip-only-status-filter.spec.md`
-> (2026-08-07): `CmbStatus` is removed — the "Chips route through `CmbStatus`"
-> decision and the `TxtStats` step of the data flow no longer hold; the chips own
-> the status state directly.
+> Superseded by `feature-quest-chip-only-status-filter.spec.md` (2026-08-07), in
+> part: `CmbStatus` is removed — the "Chips route through `CmbStatus`" decision and
+> the `TxtStats` step of the data flow no longer hold; the chips own the status
+> state directly. Everything else here stands.
 
 ## Summary
 

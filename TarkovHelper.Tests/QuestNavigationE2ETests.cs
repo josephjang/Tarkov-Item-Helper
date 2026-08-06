@@ -1,3 +1,5 @@
+using static TarkovHelper.Tests.QuestTabDriver;
+
 namespace TarkovHelper.Tests;
 
 /// <summary>
@@ -28,7 +30,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
 
     /// <summary>
     /// On the Quests tab: filter to Locked + the quest's name, open the quest
-    /// (shared E2ETestBase.ShowQuestDetail choreography), and click its prerequisite
+    /// (shared QuestTabDriver.ShowQuestDetail choreography), and click its prerequisite
     /// link — landing in the "shown quest hidden by filters" state (the prerequisite
     /// is Active, so the Locked filter excludes it).
     /// </summary>
