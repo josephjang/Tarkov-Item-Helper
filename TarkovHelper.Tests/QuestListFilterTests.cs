@@ -189,8 +189,10 @@ public sealed class QuestListFilterTests
         Assert.Equal(string.Empty, AllCriteria().NormalizedSearchText);
     }
 
-    private static readonly string[] AllStatusTags =
-        { "Active", "Locked", "Done", "Failed", "Unavailable" };
+    // The production chip-tag list (All first) — the count tests iterate exactly the
+    // tags UpdateStatusChips hands to CountByStatusTag, so the All chip's count is
+    // covered by every one of them.
+    private static readonly string[] AllStatusTags = QuestStatusTags.ChipTags;
 
     [Fact]
     public void Chip_counts_group_by_tag_with_locked_including_levellocked()
@@ -368,14 +370,15 @@ public sealed class QuestListFilterTests
     }
 
     [Fact]
-    public void Chip_tags_cover_every_status_the_filter_understands_except_All()
+    public void Chip_tags_start_with_All_and_cover_every_status_except_LevelLocked()
     {
-        // The chips are the only way to reach a status filter without the combo, so the
-        // shared tag table must stay in step with QuestStatus — a status added to the
-        // enum with no chip would be invisible on the bar.
+        // The chips are the app's ONLY status filter, so the shared tag table must
+        // stay in step with QuestStatus — a status added to the enum with no chip
+        // would be unreachable. "All" leads the row: it is the direct route back to
+        // the unfiltered list (see feature-quest-chip-only-status-filter.md).
         var chipTags = QuestStatusTags.ChipTags;
 
-        Assert.DoesNotContain(QuestStatusTags.All, chipTags);
+        Assert.Equal(QuestStatusTags.All, chipTags[0]);
         Assert.Equal(chipTags.Length, chipTags.Distinct().Count());
         foreach (var status in Enum.GetValues<QuestStatus>())
         {
@@ -383,6 +386,43 @@ public sealed class QuestListFilterTests
             if (status == QuestStatus.LevelLocked) continue;
             Assert.Contains(status.ToString(), chipTags);
         }
+    }
+
+    [Fact]
+    public void All_chip_count_is_the_All_click_preview_not_the_sum_or_the_total()
+    {
+        // Own-faction Active + Done, plus an other-faction quest that the faction
+        // filter hides under "All" but surfaces under "Unavailable".
+        var vms = new List<QuestViewModel>
+        {
+            Vm(name: "Own Active", status: QuestStatus.Active, faction: "bear"),
+            Vm(name: "Own Done", status: QuestStatus.Done, faction: "bear"),
+            Vm(name: "Other", status: QuestStatus.Unavailable, faction: "usec"),
+        };
+
+        var counts = QuestListFilter.CountByStatusTag(
+            vms, AllCriteria(faction: "bear"), AllStatusTags);
+
+        // All = what the list shows when All is selected: 2. NOT the per-chip sum
+        // (1 Active + 1 Done + 1 Unavailable = 3) and NOT the raw loaded total (3).
+        Assert.Equal(2, counts["All"]);
+        Assert.Equal(1, counts["Active"]);
+        Assert.Equal(1, counts["Done"]);
+        Assert.Equal(1, counts["Unavailable"]);
+    }
+
+    [Fact]
+    public void IsKnown_accepts_every_chip_tag_and_rejects_anything_else()
+    {
+        foreach (var tag in QuestStatusTags.ChipTags)
+        {
+            Assert.True(QuestStatusTags.IsKnown(tag));
+        }
+
+        Assert.False(QuestStatusTags.IsKnown("NotAStatus"));
+        Assert.False(QuestStatusTags.IsKnown(""));
+        Assert.False(QuestStatusTags.IsKnown(null));
+        Assert.False(QuestStatusTags.IsKnown("active")); // ordinal, not case-insensitive
     }
 
     [Fact]

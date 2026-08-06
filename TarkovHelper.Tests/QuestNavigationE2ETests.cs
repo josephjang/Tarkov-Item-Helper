@@ -53,7 +53,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
 
         // Filters and search survive the navigation; the hidden target shows a notice
         // and no list row claims to be it.
-        Assert.Equal("Locked", app.WaitForComboSelection("CmbStatus"));
+        WaitForSelectedStatusChip(app, "Locked");
         Assert.Equal(questName, app.GetTextBoxValue("TxtSearch"));
         app.WaitForElementVisibility("BtnShowInList", visible: true);
         Assert.False(app.ListHasSelection("LstQuests"),
@@ -62,7 +62,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         // The notice's button is the explicit escape hatch: it performs the old
         // reset-and-highlight behavior.
         app.InvokeElement("BtnShowInList");
-        Assert.Equal("All", app.WaitForComboSelection("CmbStatus"));
+        WaitForSelectedStatusChip(app, "All");
         WaitUntil(() => app.GetTextBoxValue("TxtSearch") == "", "search box to be cleared");
         app.WaitForElementVisibility("BtnShowInList", visible: false);
         app.WaitForListSelection("LstQuests", hasSelection: true);
@@ -89,7 +89,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         // Cross-check through the list: the prerequisite is now Done, so the Done
         // filter reveals it and reconciliation re-selects it.
         app.SetTextBoxValue("TxtSearch", "");
-        app.SelectComboItemByName("CmbStatus", "Done");
+        SelectStatusChip(app, "Done");
         app.WaitForElementVisibility("BtnShowInList", visible: false);
         app.WaitForListSelection("LstQuests", hasSelection: true);
         Assert.Equal(prereqName, app.GetElementText("TxtDetailName"));
@@ -129,12 +129,12 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         app.SetTextBoxValue("TxtSearch", "");
         WaitUntil(() => app.GetListItemCount("LstQuests") > 1,
             "the cleared search to widen the quest list");
-        Assert.Equal("Locked", app.WaitForComboSelection("CmbStatus"));
+        WaitForSelectedStatusChip(app, "Locked");
         app.WaitForElementVisibility("BtnShowInList", visible: true);
 
         // Switching the status filter to Active reveals it: reconciliation selects it
         // in the list and the notice disappears.
-        app.SelectComboItemByName("CmbStatus", "Active");
+        SelectStatusChip(app, "Active");
         app.WaitForElementVisibility("BtnShowInList", visible: false);
         app.WaitForListSelection("LstQuests", hasSelection: true);
         Assert.Equal(prereqName, app.GetElementText("TxtDetailName"));
@@ -148,7 +148,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
 
         // Park the quest tab on a non-default filter, then leave the tab.
         app.SelectTab("TabQuests", "LstQuests");
-        app.SelectComboItemByName("CmbStatus", "Locked");
+        SelectStatusChip(app, "Locked");
         app.SelectTab("TabItems", "LstItems", bounceTabAutomationId: "TabQuests");
 
         var clicked = ClickFirstQuestLinkInItemList(app, questNames);
@@ -156,7 +156,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         // The click lands back on the Quests tab; the filter must still say Locked
         // (the old behavior reset it to All), and the panel/list must agree.
         app.SelectTab("TabQuests", "LstQuests");
-        Assert.Equal("Locked", app.WaitForComboSelection("CmbStatus"));
+        WaitForSelectedStatusChip(app, "Locked");
         WaitUntil(() => app.GetElementText("TxtDetailName") == clicked,
             $"quest detail to show '{clicked}'");
         WaitUntil(
@@ -171,7 +171,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         using var app = LaunchMaximized();
 
         app.SelectTab("TabQuests", "LstQuests");
-        app.SelectComboItemByName("CmbStatus", "Done");
+        SelectStatusChip(app, "Done");
         app.SelectTab("TabCollector", "LstItems", bounceTabAutomationId: "TabQuests");
 
         var clicked = ClickFirstQuestLinkInItemList(app, questNames);
@@ -179,7 +179,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         // Fresh profile: nothing is Done, so the target is necessarily hidden — the
         // filter must survive as Done with the notice up and no selection.
         app.SelectTab("TabQuests", "LstQuests");
-        Assert.Equal("Done", app.WaitForComboSelection("CmbStatus"));
+        WaitForSelectedStatusChip(app, "Done");
         WaitUntil(() => app.GetElementText("TxtDetailName") == clicked,
             $"quest detail to show '{clicked}'");
         app.WaitForElementVisibility("BtnShowInList", visible: true);
@@ -237,7 +237,7 @@ public sealed class QuestNavigationE2ETests : E2ETestBase
         WaitUntil(() => app.GetElementText("TxtDetailName") == recommended,
             $"quest detail to show '{recommended}'");
         Assert.Equal(noMatchSearch, app.GetTextBoxValue("TxtSearch"));
-        Assert.Equal("Active", app.WaitForComboSelection("CmbStatus"));
+        WaitForSelectedStatusChip(app, "Active");
         app.WaitForElementVisibility("BtnShowInList", visible: true);
     }
 

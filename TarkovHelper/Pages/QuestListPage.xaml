@@ -28,12 +28,17 @@
 
         <!-- Status chip: a pill Button on the statistics bar acting as the status
              filter (clicking applies that status; clicking the selected chip returns
-             to "All"). Background/BorderBrush/FontWeight of the selected chip are set
-             from code in UpdateStatusChips — the single place chip visuals derive
-             from the CmbStatus selection. -->
+             to "All"). Every chip always renders in its own status color — colored
+             label and a color-derived border even when unselected; the selected chip
+             adds a translucent fill of that color. Background/BorderBrush/FontWeight
+             are set from code in UpdateStatusChips — the single place chip visuals
+             derive from the page's _statusTag. The hover cue is an Opacity dim, NOT
+             a Background swap: a neutral hover background would visually "unfill"
+             the selected chip's colored fill. -->
         <Style x:Key="StatusChipStyle" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Background" Value="Transparent"/>
+            <!-- Pre-first-paint placeholder only — UpdateStatusChips overwrites it. -->
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="FontSize" Value="{DynamicResource FontSizeXSmall}"/>
@@ -47,8 +52,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ChipBorder" Property="Background"
-                                        Value="{StaticResource BackgroundLightBrush}"/>
+                                <Setter TargetName="ChipBorder" Property="Opacity" Value="0.85"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -207,19 +211,8 @@
                         <ComboBoxItem Content="All Maps" Tag="" IsSelected="True"/>
                     </ComboBox>
 
-                    <!-- Status Filter -->
-                    <ComboBox x:Name="CmbStatus" Width="110"
-                              SelectionChanged="CmbStatus_SelectionChanged">
-                        <ComboBoxItem Content="Active" Tag="Active" IsSelected="True"/>
-                        <ComboBoxItem Content="All" Tag="All"/>
-                        <ComboBoxItem Content="Locked" Tag="Locked"/>
-                        <ComboBoxItem Content="Done" Tag="Done"/>
-                        <ComboBoxItem Content="Failed" Tag="Failed"/>
-                        <ComboBoxItem Content="Unavailable" Tag="Unavailable"/>
-                    </ComboBox>
-
                     <!-- Faction Toggle -->
-                    <Border Margin="16,0,0,0" Background="{StaticResource BackgroundDarkBrush}"
+                    <Border Margin="0" Background="{StaticResource BackgroundDarkBrush}"
                             CornerRadius="4" Padding="2">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton x:Name="RbBear" Content="BEAR" GroupName="Faction"
@@ -292,41 +285,47 @@
         <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="TxtStats" Grid.Column="0" FontSize="{DynamicResource FontSizeXSmall}"
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
-
-                <!-- Clickable status-count chips: click applies that status filter,
-                     clicking the selected chip returns to "All". Counts are what the
-                     list would show under that status with all other filters as-is
+                <!-- Clickable status-count chips — the page's ONLY status filter:
+                     click applies that status, clicking the selected chip (or the
+                     All chip) returns to "All". Counts are what the list would show
+                     under that status with all other filters as-is
                      (QuestListFilter.CountByStatusTag). -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
-                            Margin="12,0,8,0">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="0,0,8,0">
+                    <!-- The All chip's count is the All click-preview — what the list
+                         shows with no status filter. NOT the sum of the other chips
+                         (an other-faction quest counts only under Unavailable) and
+                         NOT the raw loaded total. Neutral foreground: All is the
+                         absence of a status filter, so no status color fits. -->
+                    <Button x:Name="ChipAll" Style="{StaticResource StatusChipStyle}"
+                            Foreground="{StaticResource TextPrimaryBrush}" Tag="All" Click="StatusChip_Click"/>
                     <Button x:Name="ChipActive" Style="{StaticResource StatusChipStyle}"
                             Foreground="#4CAF50" Tag="Active" Click="StatusChip_Click"/>
                     <!-- Neutral gray: the chip merges Locked + LevelLocked, so neither
                          the gray Locked badge nor the orange Level badge color fits.
-                         Darker than the N/A chip so the two greys stay distinguishable. -->
+                         Darker than the Unavailable chip so the two greys stay
+                         distinguishable. -->
                     <Button x:Name="ChipLocked" Style="{StaticResource StatusChipStyle}"
                             Foreground="#757575" Tag="Locked" Click="StatusChip_Click"/>
                     <Button x:Name="ChipDone" Style="{StaticResource StatusChipStyle}"
                             Foreground="#2196F3" Tag="Done" Click="StatusChip_Click"/>
                     <Button x:Name="ChipFailed" Style="{StaticResource StatusChipStyle}"
                             Foreground="#F44336" Tag="Failed" Click="StatusChip_Click"/>
-                    <!-- #9E9E9E matches UnavailableBrush, the N/A badge color in the
-                         list rows (QuestListPage.xaml.cs) — the chip and the badge name
-                         the same status, so they must not drift apart. -->
+                    <!-- #9E9E9E matches UnavailableBrush, the badge color in the list
+                         rows (QuestListPage.xaml.cs). The chip is labeled
+                         "Unavailable" while the width-constrained row badge keeps
+                         "N/A" — the two name the same status, so their COLOR must
+                         not drift apart. -->
                     <Button x:Name="ChipUnavailable" Style="{StaticResource StatusChipStyle}"
                             Foreground="#9E9E9E" Tag="Unavailable" Click="StatusChip_Click"/>
                 </StackPanel>
 
                 <!-- Kappa Progress Gauge -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="κ" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                Foreground="#9C27B0" VerticalAlignment="Center"
                                Margin="0,0,6,0"/>
