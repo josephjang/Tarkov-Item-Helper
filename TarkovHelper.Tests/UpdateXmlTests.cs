@@ -18,7 +18,7 @@ namespace TarkovHelper.Tests;
 /// </summary>
 public sealed class UpdateXmlTests
 {
-    private const string ForkRepoUrl = "https://github.com/josephjang/Tarkov-Item-Helper/";
+    private const string ForkRepoUrl = "https://github.com/josephjang/TarkovHelper/";
 
     /// <summary>
     /// The repo-root update.xml, resolved via the shared TestRepo walker.

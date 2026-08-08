@@ -136,15 +136,15 @@ public async Task<RefreshResult> RefreshDataFromCacheAsync(
 <?xml version="1.0" encoding="UTF-8"?>
 <item>
     <version>2026.7.0</version>
-    <url>https://github.com/josephjang/Tarkov-Item-Helper/releases/download/v2026.7.0/TarkovHelper.zip</url>
-    <changelog>https://github.com/josephjang/Tarkov-Item-Helper/releases/latest</changelog>
+    <url>https://github.com/josephjang/TarkovHelper/releases/download/v2026.7.0/TarkovHelper.zip</url>
+    <changelog>https://github.com/josephjang/TarkovHelper/releases/latest</changelog>
     <mandatory>false</mandatory>
 </item>
 ```
 
 **Services/UpdateService.cs** (업데이트 URL과 체크 로직의 소유자):
 ```csharp
-internal const string UpdateXmlUrl = "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/main/update.xml";
+internal const string UpdateXmlUrl = "https://raw.githubusercontent.com/josephjang/TarkovHelper/main/update.xml";
 
 // 3분 주기 + 수동 버튼으로 update.xml 체크; 새 버전 발견 시 UI에 표시.
 // 사용자가 업데이트 버튼을 누르면 AutoUpdater.Start(UpdateXmlUrl)로 교체 수행.
@@ -154,8 +154,8 @@ internal const string UpdateXmlUrl = "https://raw.githubusercontent.com/josephja
 
 **Services/DatabaseUpdateService.cs** — 앱 업데이트와 독립적으로 DB만 갱신:
 ```csharp
-internal const string VERSION_URL  = ".../josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt";
-internal const string DATABASE_URL = ".../josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db";
+internal const string VERSION_URL  = ".../josephjang/TarkovHelper/refs/heads/main/TarkovHelper/Assets/db_version.txt";
+internal const string DATABASE_URL = ".../josephjang/TarkovHelper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db";
 
 // 5분 주기로 원격 db_version.txt를 읽어 로컬과 문자열 비교;
 // 다르면 tarkov_data.db를 .tmp로 내려받아 교체하고 DatabaseUpdated 이벤트 발생

@@ -15,11 +15,11 @@
     <Version>2026.7.0</Version>
     <ApplicationIcon>1764579946.ico</ApplicationIcon>
 
-    <!-- App identity (fork of Zeliper/Tarkov-Item-Helper, maintained at josephjang/Tarkov-Item-Helper) -->
-    <Product>Tarkov Item Helper</Product>
+    <!-- App identity (fork of Zeliper/Tarkov-Item-Helper, maintained at josephjang/TarkovHelper) -->
+    <Product>Tarkov Helper</Product>
     <Authors>Zeliper, Jeongho Jang</Authors>
     <Copyright>Copyright (c) 2025 Zeliper, (c) 2026 Jeongho Jang</Copyright>
-    <RepositoryUrl>https://github.com/josephjang/Tarkov-Item-Helper</RepositoryUrl>
+    <RepositoryUrl>https://github.com/josephjang/TarkovHelper</RepositoryUrl>
 
     <!-- AutoUpdater.NET 다국어 리소스 제한 (en, ko, ja만 유지) -->
     <SatelliteResourceLanguages>en;ko;ja-jp</SatelliteResourceLanguages>

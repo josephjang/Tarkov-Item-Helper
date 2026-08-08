@@ -3,7 +3,7 @@
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README.ko.md)
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README.ja.md)
-[![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/josephjang/TarkovHelper)](https://github.com/josephjang/TarkovHelper/releases/latest)
 
 Escape from Tarkovのクエスト・ハイドアウト・アイテムの進行状況を追跡し、ゲーム自身が書き出すログファイルを監視して自動的に同期するWindowsデスクトップコンパニオンです。
 
@@ -13,7 +13,7 @@ Escape from Tarkovのクエスト・ハイドアウト・アイテムの進行�
 
 ## ダウンロード
 
-[最新リリース](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)から **TarkovHelper.zip** をダウンロードし、任意の場所に展開して `TarkovHelper.exe` を実行してください。
+[最新リリース](https://github.com/josephjang/TarkovHelper/releases/latest)から **TarkovHelper.zip** をダウンロードし、任意の場所に展開して `TarkovHelper.exe` を実行してください。
 
 - **Windows** と [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) が必要
 - 起動時に**管理者権限への昇格**を求めます。理由は[仕組みと安全性](#仕組みと安全性)を参照してください。
@@ -68,8 +68,8 @@ Tarkov Helperはすべてのゲーム状態を、**ゲーム自身が書き出�
 [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) が必要です。
 
 ```powershell
-git clone https://github.com/josephjang/Tarkov-Item-Helper.git
-cd Tarkov-Item-Helper
+git clone https://github.com/josephjang/TarkovHelper.git
+cd TarkovHelper
 dotnet build TarkovHelper/TarkovHelper.csproj -c Release
 ```
 

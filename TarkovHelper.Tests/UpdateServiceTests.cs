@@ -18,8 +18,8 @@ public sealed class UpdateServiceTests
             <?xml version="1.0" encoding="UTF-8"?>
             <item>
                 <version>2026.7.0</version>
-                <url>https://github.com/josephjang/Tarkov-Item-Helper/releases/download/v2026.7.0/TarkovHelper.zip</url>
-                <changelog>https://github.com/josephjang/Tarkov-Item-Helper/releases/latest</changelog>
+                <url>https://github.com/josephjang/TarkovHelper/releases/download/v2026.7.0/TarkovHelper.zip</url>
+                <changelog>https://github.com/josephjang/TarkovHelper/releases/latest</changelog>
                 <mandatory>false</mandatory>
             </item>
             """;
@@ -29,9 +29,9 @@ public sealed class UpdateServiceTests
         Assert.NotNull(info);
         Assert.Equal(new Version(2026, 7, 0), info.Version);
         Assert.Equal(
-            "https://github.com/josephjang/Tarkov-Item-Helper/releases/download/v2026.7.0/TarkovHelper.zip",
+            "https://github.com/josephjang/TarkovHelper/releases/download/v2026.7.0/TarkovHelper.zip",
             info.DownloadUrl);
-        Assert.Equal("https://github.com/josephjang/Tarkov-Item-Helper/releases/latest", info.ChangelogUrl);
+        Assert.Equal("https://github.com/josephjang/TarkovHelper/releases/latest", info.ChangelogUrl);
     }
 
     [Fact]
@@ -84,13 +84,13 @@ public sealed class UpdateServiceTests
         // check would also pass for a wrong host like https://evil.example/josephjang/…,
         // which is exactly the drift this guard exists to catch.
         Assert.Equal(
-            "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/main/update.xml",
+            "https://raw.githubusercontent.com/josephjang/TarkovHelper/main/update.xml",
             UpdateService.UpdateXmlUrl);
         Assert.Equal(
-            "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt",
+            "https://raw.githubusercontent.com/josephjang/TarkovHelper/refs/heads/main/TarkovHelper/Assets/db_version.txt",
             DatabaseUpdateService.VERSION_URL);
         Assert.Equal(
-            "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db",
+            "https://raw.githubusercontent.com/josephjang/TarkovHelper/refs/heads/main/TarkovHelper/Assets/tarkov_data.db",
             DatabaseUpdateService.DATABASE_URL);
     }
 

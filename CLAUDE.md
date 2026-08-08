@@ -170,7 +170,7 @@ Services emit events (ProgressChanged, DatabaseUpdated, DataRefreshed) that UI p
 
 ## Releases
 
-This repo (josephjang/Tarkov-Item-Helper) releases independently of upstream
+This repo (josephjang/TarkovHelper) releases independently of upstream
 (Zeliper). Versions use CalVer `YYYY.M.N` (N = release counter within the
 month, no fix/feature semantics), starting at v2026.7.0.
 

@@ -16,7 +16,7 @@ namespace TarkovHelper.Services
         private static readonly Lazy<UpdateService> _instance = new(() => new UpdateService());
         public static UpdateService Instance => _instance.Value;
 
-        internal const string UpdateXmlUrl = "https://raw.githubusercontent.com/josephjang/Tarkov-Item-Helper/main/update.xml";
+        internal const string UpdateXmlUrl = "https://raw.githubusercontent.com/josephjang/TarkovHelper/main/update.xml";
         private const int CheckIntervalMinutes = 3;
 
         private readonly HttpClient _httpClient;
