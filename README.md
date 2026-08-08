@@ -5,9 +5,9 @@
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
 [![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)
 
-A Windows desktop companion for Escape from Tarkov that tracks your quest, hideout, and item progress — and keeps it in sync automatically by watching the game's own log files.
+A Windows desktop companion for Escape from Tarkov that tracks your quest, hideout, and item progress, keeping everything in sync automatically by watching the game's own log files.
 
-> **Note**: This is an independently maintained fork of [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper). It ships its own releases — versioned CalVer (`YYYY.M.N`), starting at **v2026.7.0** — and continues to add features.
+> **Note**: This is an independently maintained fork of [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper). It ships its own releases, versioned CalVer (`YYYY.M.N`) starting at **v2026.7.0**, and continues to add features.
 
 ![Quest tracking in Tarkov Helper](screenshots/quests.png)
 
@@ -16,31 +16,31 @@ A Windows desktop companion for Escape from Tarkov that tracks your quest, hideo
 Get **TarkovHelper.zip** from the [latest release](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest), extract it anywhere, and run `TarkovHelper.exe`.
 
 - **Windows** with the [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
-- The app asks for **administrator elevation** on launch — [How it works & safety](#how-it-works--safety) explains why
+- The app asks for **administrator elevation** on launch; [How it works & safety](#how-it-works--safety) explains why
 
 Once installed, the app keeps both itself and its game data up to date automatically.
 
 ## Features
 
-- **Quests** — browse and search every quest; filter by status, trader, map, Kappa, and faction; see objectives, prerequisites, and follow-ups; get recommendations for what to play next
-- **Hideout** — track station levels and see the items, traders, skills, and other stations each upgrade requires
-- **Items** — one aggregated list of everything your quests and hideout upgrades still need, with FIR (Found in Raid) and non-FIR tracked separately against what you own
-- **Collector** — a dedicated checklist for the Collector quest's items
-- **Map** — interactive maps with quest markers and extracts, including in-raid position tracking
-- **Overlay minimap** — an always-on-top minimap for use while playing, controlled by global hotkeys
-- **Game-log sync** — quest started/completed/failed states, game mode, and player level are picked up automatically from the game's log files
-- **PvP/PvE profiles** — separate progress per mode, switched automatically to match the mode you're playing
-- **Automatic updates** — the app updates itself and its game database in the background
-- **Three languages** — English, 한국어, and 日本語, switchable in-app
+- **Quests**: browse and search every quest; filter by status, trader, map, Kappa, and faction; see objectives, prerequisites, and follow-ups; get recommendations for what to play next
+- **Hideout**: track station levels and see the items, traders, skills, and other stations each upgrade requires
+- **Items**: one aggregated list of everything your quests and hideout upgrades still need, with FIR (Found in Raid) and non-FIR tracked separately against what you own
+- **Collector**: a dedicated checklist for the Collector quest's items
+- **Map**: interactive maps with quest markers and extracts, including in-raid position tracking
+- **Overlay minimap**: an always-on-top minimap for use while playing, controlled by global hotkeys
+- **Game-log sync**: quest started/completed/failed states, game mode, and player level are picked up automatically from the game's log files
+- **PvP/PvE profiles**: separate progress per mode, switched automatically to match the mode you're playing
+- **Automatic updates**: the app updates itself and its game database in the background
+- **Three languages**: English, 한국어, and 日本語, switchable in-app
 
 ## How it works & safety
 
 Tarkov Helper obtains all game state **passively, by reading files the game itself writes**:
 
-- **Log files** — quest and raid events, game mode, and player level come from the game's own logs
-- **Screenshot filenames** — in-raid position comes from the game's screenshot feature, which encodes your coordinates in the filename
+- **Log files**: quest and raid events, game mode, and player level come from the game's own logs
+- **Screenshot filenames**: in-raid position comes from the game's screenshot feature, which encodes your coordinates in the filename
 
-It does **not** read game memory, inject code, or modify any game files. The overlay minimap is an ordinary always-on-top window, and its global hotkeys use a system-wide keyboard hook running in Tarkov Helper's own process — that hook, together with log-file access, is why the app requests administrator elevation at launch.
+It does **not** read game memory, inject code, or modify any game files. The overlay minimap is an ordinary always-on-top window, and its global hotkeys use a system-wide keyboard hook running in Tarkov Helper's own process. That hook, together with log-file access, is why the app requests administrator elevation at launch.
 
 No third-party tool can make promises on Battlestate Games' behalf, so use it at your own discretion.
 
@@ -52,7 +52,7 @@ Sync works out of the box: the app auto-detects your Tarkov installation (BSG la
 
 ### Where your progress is stored
 
-Your progress lives in a `Config` folder next to `TarkovHelper.exe`. Each install location keeps its own data — so if you move to a new copy of the app and your progress looks empty, use **Settings** → **Data Migration** to import it from the previous location. Game data (quests, items, hideout) ships with the app and updates automatically; there is nothing to fetch manually.
+Your progress lives in a `Config` folder next to `TarkovHelper.exe`. Each install location keeps its own data, so if you move to a new copy of the app and your progress looks empty, use **Settings** → **Data Migration** to import it from the previous location. Game data (quests, items, hideout) ships with the app and updates automatically; there is nothing to fetch manually.
 
 ## More screenshots
 
