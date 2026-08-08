@@ -6,6 +6,10 @@
 > derived from. The sibling `feature-decision-docs-process.spec.md` holds the
 > technical design.
 
+> Superseded in part by `feature-decisions-folder-rename.md` (2026-08-08): the
+> Product Decisions statement that the folder keeps its `docs/PRDs/` name is
+> reversed; the folder is now `docs/decisions/`. Every other decision stands.
+
 ## Summary
 
 The documentation process is rebuilt around three rules:

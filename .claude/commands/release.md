@@ -5,7 +5,7 @@
 빌드/패키징/GitHub Release 생성은 `v*` 태그 push 시 `.github/workflows/release.yml`이
 자동 수행합니다. 이 커맨드는 버전 범프, 태그 push, 릴리즈 노트 큐레이션, 그리고
 릴리즈 완료 **후** `update.xml` 범프만 담당합니다. 설계 배경은
-`docs/PRDs/feature-fork-release-process.md` 참조.
+`docs/decisions/feature-fork-release-process.md` 참조.
 
 ## Preflight (하나라도 실패하면 중단)
 

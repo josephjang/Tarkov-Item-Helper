@@ -10,7 +10,7 @@ using FontFamily = System.Windows.Media.FontFamily;
 namespace TarkovHelper.Tests;
 
 /// <summary>
-/// Guards the shipped font assets named in docs/PRDs/feature-eft-font-stack.spec.md:
+/// Guards the shipped font assets named in feature-eft-font-stack.spec.md:
 /// every embedded file must open as a real GlyphTypeface (CFF/TTF parse guard),
 /// group into exactly the three expected WWS families with true Regular + Bold cuts
 /// (no synthesized bold), cover the scripts each face is responsible for, stay in

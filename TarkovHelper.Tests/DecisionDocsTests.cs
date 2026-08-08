@@ -5,9 +5,9 @@ namespace TarkovHelper.Tests;
 
 /// <summary>
 /// Guards the four decision-doc invariants named in the Risks section of
-/// feature-decision-docs-process.md: the docs/PRDs format is meant to be enforced by
-/// structure, not discipline, and these checks are the structure. All four run
-/// offline against the working tree (same repo-root walk as UpdateXmlTests).
+/// feature-decision-docs-process.md: the docs/decisions format is meant to be
+/// enforced by structure, not discipline, and these checks are the structure. All
+/// four run offline against the working tree (same repo-root walk as UpdateXmlTests).
 ///
 /// Scope rules: the eleven documents flattened from the old active/ folder keep
 /// their legacy format and are exempted by a closed allowlist (the set can never
@@ -16,13 +16,13 @@ namespace TarkovHelper.Tests;
 /// because it records the removed active/ paths and the deleted template by design
 /// (mirroring verification checks 4–5 in that spec).
 /// </summary>
-public sealed class PrdDocsTests
+public sealed class DecisionDocsTests
 {
     /// <summary>
-    /// Documents flattened from docs/PRDs/active/ in the decision-docs-process change.
-    /// They keep the legacy template format (Status/Updated/Owner fields, checkboxes,
-    /// Archive Info stubs) deliberately; only new-format documents are held to the
-    /// no-kept-current-field invariant.
+    /// Documents flattened from the old active/ folder in the decision-docs-process
+    /// change. They keep the legacy template format (Status/Updated/Owner fields,
+    /// checkboxes, Archive Info stubs) deliberately; only new-format documents are
+    /// held to the no-kept-current-field invariant.
     /// </summary>
     private static readonly string[] LegacyFlattenedDocs =
     {
@@ -46,18 +46,19 @@ public sealed class PrdDocsTests
     /// </summary>
     private const string PathCheckExemptSpec = "feature-decision-docs-process.spec.md";
 
-    private static string PrdsDir() => Path.Combine(TestRepo.Root(), "docs", "PRDs");
+    private static string DecisionsDir() => Path.Combine(TestRepo.Root(), "docs", "decisions");
 
     /// <summary>
-    /// New-format decision docs: everything flat in docs/PRDs/ plus the two templates,
-    /// minus the README and the legacy allowlist. archive/ is excluded (frozen history).
+    /// New-format decision docs: everything flat in docs/decisions/ plus the two
+    /// templates, minus the README and the legacy allowlist. archive/ is excluded
+    /// (frozen history).
     /// </summary>
     private static IEnumerable<string> NewFormatDocs()
     {
-        var prds = PrdsDir();
-        var flat = Directory.EnumerateFiles(prds, "*.md", SearchOption.TopDirectoryOnly);
+        var decisions = DecisionsDir();
+        var flat = Directory.EnumerateFiles(decisions, "*.md", SearchOption.TopDirectoryOnly);
         var templates = Directory.EnumerateFiles(
-            Path.Combine(prds, "templates"), "*.md", SearchOption.TopDirectoryOnly);
+            Path.Combine(decisions, "templates"), "*.md", SearchOption.TopDirectoryOnly);
 
         return flat.Concat(templates).Where(path =>
         {
@@ -97,7 +98,7 @@ public sealed class PrdDocsTests
     public void Every_spec_has_its_sibling_prd()
     {
         var missing = new List<string>();
-        foreach (var path in Directory.EnumerateFiles(PrdsDir(), "*.spec.md", SearchOption.TopDirectoryOnly))
+        foreach (var path in Directory.EnumerateFiles(DecisionsDir(), "*.spec.md", SearchOption.TopDirectoryOnly))
         {
             var sibling = path.Substring(0, path.Length - ".spec.md".Length) + ".md";
             if (!File.Exists(sibling))
@@ -114,7 +115,7 @@ public sealed class PrdDocsTests
     public void Every_korean_twin_has_its_english_original()
     {
         var missing = new List<string>();
-        foreach (var path in Directory.EnumerateFiles(PrdsDir(), "*.ko.md", SearchOption.AllDirectories))
+        foreach (var path in Directory.EnumerateFiles(DecisionsDir(), "*.ko.md", SearchOption.AllDirectories))
         {
             var original = path.Substring(0, path.Length - ".ko.md".Length) + ".md";
             if (!File.Exists(original))
@@ -128,10 +129,13 @@ public sealed class PrdDocsTests
     }
 
     [Fact]
-    public void Every_referenced_prd_path_resolves()
+    public void Every_referenced_decision_doc_path_resolves()
     {
         var root = TestRepo.Root();
-        var token = new Regex(@"docs/PRDs/[A-Za-z0-9_/.\-]+\.md");
+        // Tokens carrying the folder's pre-rename name in frozen documents are
+        // deliberately not scanned: they were true when written, and frozen
+        // documents are not edited.
+        var token = new Regex(@"docs/decisions/[A-Za-z0-9_/.\-]+\.md");
         // Directories that hold stale full copies of the repo or build output, not
         // sources of truth for path references.
         var skippedDirs = new[]
@@ -175,6 +179,6 @@ public sealed class PrdDocsTests
         }
 
         Assert.True(broken.Count == 0,
-            "Every docs/PRDs path written in a tracked file must resolve:\n" + string.Join("\n", broken));
+            "Every docs/decisions path written in a tracked file must resolve:\n" + string.Join("\n", broken));
     }
 }

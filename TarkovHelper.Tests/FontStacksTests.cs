@@ -4,7 +4,7 @@ namespace TarkovHelper.Tests;
 
 /// <summary>
 /// Guards the per-language chain ordering decisions recorded in
-/// docs/PRDs/feature-eft-font-stack.spec.md: the embedded Bender (the game's
+/// feature-eft-font-stack.spec.md: the embedded Bender (the game's
 /// Latin/Cyrillic face) leads every chain with the embedded Play right after
 /// it as glyph backstop, and Meiryo must precede the bundled Noto for
 /// Japanese while Korean keeps Noto ahead of every system Japanese font.

@@ -6,6 +6,10 @@
 > requirements, and the product decisions; its evidence is not restated here.
 > State counts describe the repository as of `origin/main`, before this change.
 
+> Superseded in part by `feature-decisions-folder-rename.spec.md` (2026-08-08):
+> the Technical Decisions entry "The folder keeps the name `docs/PRDs/`" is
+> reversed; the folder is now `docs/decisions/`. Every other decision stands.
+
 ## Summary
 
 Four groups of changes plus two review-added guards, no application code: two new
