@@ -3,7 +3,7 @@
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README.ko.md)
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README.ja.md)
-[![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/josephjang/TarkovHelper)](https://github.com/josephjang/TarkovHelper/releases/latest)
 
 Escape from Tarkov의 퀘스트, 은신처, 아이템 진행 상황을 추적하고, 게임이 남기는 로그 파일을 감시해 자동으로 동기화하는 Windows 데스크톱 도우미입니다.
 
@@ -13,7 +13,7 @@ Escape from Tarkov의 퀘스트, 은신처, 아이템 진행 상황을 추적하
 
 ## 다운로드
 
-[최신 릴리즈](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)에서 **TarkovHelper.zip**을 받아 원하는 곳에 풀고 `TarkovHelper.exe`를 실행하세요.
+[최신 릴리즈](https://github.com/josephjang/TarkovHelper/releases/latest)에서 **TarkovHelper.zip**을 받아 원하는 곳에 풀고 `TarkovHelper.exe`를 실행하세요.
 
 - **Windows** 및 [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) 필요
 - 실행 시 **관리자 권한 상승**을 요청합니다. 이유는 [작동 방식과 안전성](#작동-방식과-안전성)을 참고하세요.
@@ -68,8 +68,8 @@ Tarkov Helper는 모든 게임 상태를 **게임이 직접 기록하는 파일�
 [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)가 필요합니다.
 
 ```powershell
-git clone https://github.com/josephjang/Tarkov-Item-Helper.git
-cd Tarkov-Item-Helper
+git clone https://github.com/josephjang/TarkovHelper.git
+cd TarkovHelper
 dotnet build TarkovHelper/TarkovHelper.csproj -c Release
 ```
 

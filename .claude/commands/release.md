@@ -15,7 +15,7 @@
    `git tag -l v$ARGUMENTS` 와 `git ls-remote --tags origin v$ARGUMENTS`
 3. `main` 브랜치에서 클린 워킹 트리인지 확인 후 `git pull origin main`
 4. `gh auth status` 정상 확인. **remote가 두 개(origin=josephjang, upstream=Zeliper)
-   이므로 모든 `gh` 호출에 `-R josephjang/Tarkov-Item-Helper`를 붙일 것**
+   이므로 모든 `gh` 호출에 `-R josephjang/TarkovHelper`를 붙일 것**
 5. **로컬 빌드 게이트**: `dotnet build TarkovHelper.sln -c Release` 성공 확인.
    실패하면 여기서 중단 — 태그를 push하기 전에 컴파일 오류를 잡아, CI 실패 후
    태그/릴리즈를 지우는 복구 절차를 애초에 피합니다 (CI는 여전히 최종 게이트)
@@ -35,20 +35,20 @@
      upstream 시절 레거시 태그 26개(v0.9.0~v4.3.0)가 있으며 (baseline v4.3.1 외에는)
      push하지 않기로 결정됨
 4. **워크플로 대기**: 약 15초 후
-   `gh run list -R josephjang/Tarkov-Item-Helper --workflow release.yml --limit 1 --json databaseId`
+   `gh run list -R josephjang/TarkovHelper --workflow release.yml --limit 1 --json databaseId`
    로 run ID 확인 →
-   `gh run watch <id> --exit-status -R josephjang/Tarkov-Item-Helper`
+   `gh run watch <id> --exit-status -R josephjang/TarkovHelper`
 5. **릴리즈 노트 큐레이션** (워크플로 성공 시):
    - 이전 태그 확인: `git describe --tags --abbrev=0 "v$ARGUMENTS^"`
    - 커밋 로그 확인: `git log <이전태그>..v$ARGUMENTS --oneline`
    - 아래 형식으로 영어/한국어 노트를 scratchpad 임시 파일에 작성 후:
-     `gh release edit v$ARGUMENTS -R josephjang/Tarkov-Item-Helper --notes-file <파일>`
+     `gh release edit v$ARGUMENTS -R josephjang/TarkovHelper --notes-file <파일>`
 6. **자산 확인**:
-   `gh release view v$ARGUMENTS -R josephjang/Tarkov-Item-Helper --json assets`
+   `gh release view v$ARGUMENTS -R josephjang/TarkovHelper --json assets`
    결과에 `TarkovHelper.zip`이 있어야 합니다
 7. **update.xml 범프 (자산 확인 후에만!)**:
    - `<version>` → `$ARGUMENTS`
-   - `<url>` → `https://github.com/josephjang/Tarkov-Item-Helper/releases/download/v$ARGUMENTS/TarkovHelper.zip`
+   - `<url>` → `https://github.com/josephjang/TarkovHelper/releases/download/v$ARGUMENTS/TarkovHelper.zip`
    - `git commit -am "chore(release): point update.xml at v$ARGUMENTS"` 후
      `git push origin main`
    - 이 순서 덕분에 클라이언트(3분마다 raw main의 update.xml 폴링)는 다운로드
@@ -68,7 +68,7 @@
 - ...
 
 ---
-**Full Changelog**: https://github.com/josephjang/Tarkov-Item-Helper/compare/[이전태그]...v$ARGUMENTS
+**Full Changelog**: https://github.com/josephjang/TarkovHelper/compare/[이전태그]...v$ARGUMENTS
 ```
 
 커밋 메시지 패턴에 따른 분류:
@@ -85,7 +85,7 @@ update.xml을 아직 범프하지 않았으므로 어떤 클라이언트도 깨�
 복구는 안전하며 외부에서 보이지 않습니다:
 
 1. 부분 생성된 릴리즈가 있으면:
-   `gh release delete v$ARGUMENTS -y -R josephjang/Tarkov-Item-Helper`
+   `gh release delete v$ARGUMENTS -y -R josephjang/TarkovHelper`
 2. 태그 삭제: `git tag -d v$ARGUMENTS` 후
    `git push origin :refs/tags/v$ARGUMENTS`
 3. main에서 원인 수정 (일반 커밋) 후 위 "릴리즈 수행" 3단계부터 **같은 버전으로**
