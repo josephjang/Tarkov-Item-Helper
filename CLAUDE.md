@@ -65,6 +65,16 @@ root `docs/` too. `TarkovDBEditor/docs/` is a separate, smaller location for tha
 project's own internal implementation notes (wiki-parsing quirks, test case tracking) —
 not repo-wide, so it stays put.
 
+## Writing Conventions
+
+Reader-facing text (docs, comments, commit messages) should read as
+human-typed: avoid characters people rarely type by hand, such as em dashes,
+the Korean middle dot, and the "…" character (arrows are fine, editors
+auto-convert them). Follow each language's own punctuation norms. App UI
+strings follow UI copy conventions instead.
+
+Language codes follow ISO 639-1 / BCP 47: README.ko.md, not README_KR.md.
+
 ## Architecture Overview
 
 ### Pattern: Singleton Services with Event-Driven Data Flow
