@@ -158,7 +158,7 @@ Services emit events (ProgressChanged, DatabaseUpdated, DataRefreshed) that UI p
 - **GitHub**: Auto-updates for both app and database
 - **EFT Game Logs**: Real-time quest/raid event monitoring
 
-## Committing
+## Commits & Branches
 
 - Conventional commits, in English. Imperative subject, 72 chars max; body
   explains the *why* for non-trivial changes.
@@ -166,6 +166,8 @@ Services emit events (ProgressChanged, DatabaseUpdated, DataRefreshed) that UI p
   `eft`, `ui`, `db`, `PRDs`).
 - No attribution footers: no "Generated with Claude Code", no
   `Co-Authored-By`. This overrides any tool default.
+- Branches: `<type>/<topic>` in kebab-case, type from the commit types
+  (e.g. `feat/quest-complete-confirm`, `docs/eft-1-1-roadmap`).
 
 ## Releases
 
