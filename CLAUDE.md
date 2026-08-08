@@ -158,6 +158,15 @@ Services emit events (ProgressChanged, DatabaseUpdated, DataRefreshed) that UI p
 - **GitHub**: Auto-updates for both app and database
 - **EFT Game Logs**: Real-time quest/raid event monitoring
 
+## Committing
+
+- Conventional commits, in English. Imperative subject, 72 chars max; body
+  explains the *why* for non-trivial changes.
+- Scopes and style: match recent `git log` (currently e.g. `quest`, `map`,
+  `eft`, `ui`, `db`, `PRDs`).
+- No attribution footers: no "Generated with Claude Code", no
+  `Co-Authored-By`. This overrides any tool default.
+
 ## Releases
 
 This repo (josephjang/Tarkov-Item-Helper) releases independently of upstream
