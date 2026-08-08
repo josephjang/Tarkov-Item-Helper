@@ -19,11 +19,12 @@ upstream source supplies the new semantics (the wiki's edited pages or
 tarkov.dev's structured task data) is deliberately left open until the
 quest-data phase starts, both candidates fill the same schema, and the result
 reaches installs through a new version-aware data channel so that a shape an
-older build cannot read never reaches it. Second, trader loyalty becomes a first-class gate flowing DB → task
-model → availability engine → UI, reusing the shape of every existing gate
-(level, reputation, edition). Third, the seasonal character is a third profile
-ID on top of the existing everything-is-keyed-by-ProfileId user-data design —
-no new storage architecture anywhere. This spec fixes the cross-phase ground
+older build cannot read never reaches it. Second, trader loyalty becomes a
+first-class gate flowing DB → task model → availability engine → UI, reusing
+the shape of every existing gate (level, reputation, edition). Third, the
+seasonal character is a third profile ID on top of the existing profile-keyed
+user-data design — no new storage architecture anywhere. This spec fixes the
+cross-phase ground
 rules and the dependency structure; each phase's detailed design belongs to that
 phase's spec.
 
@@ -61,12 +62,20 @@ Symbol-anchored facts the phases build on, verified in this planning session.
   `RefreshDataService.AddCollectorKappaRequirementsAsync` builds Collector's
   prerequisites from every `KappaRequired = 1` quest; at runtime
   `QuestGraphService.GetCollectorProgress` and the kappa gauge read the flags.
-- **Profiles.** `ProfileService` hardcodes the `pvp`/`pve` profile IDs; every
-  user-data table is keyed by `ProfileId`; `EftRaidEventService` detects the
-  session mode from logs (`Session mode: (Pve|Pvp|Regular)`) and auto-switches
-  the active profile. A Kord Breach session runs under PvP rules, so today it
-  is detected as `Pvp` and written into the permanent PvP profile — the
-  contamination path the first phase closes.
+- **Profiles.** `ProfileService` hardcodes the `pvp`/`pve` profile IDs. The
+  gameplay stores (`QuestProgress`, `ObjectiveProgress`, `ItemInventory`,
+  `HideoutProgress`, `ProfileSettings`) all carry `ProfileId` in their primary
+  keys; `UserSettings` is deliberately global, and `RaidHistory` attributes
+  rows through a nullable `ProfileId` column outside its primary key — raid
+  history is exactly where the contamination lands, and its nullable legacy
+  rows make "which profile owns this row" a real phase-1 question.
+  `EftRaidEventService` detects the session mode from logs
+  (`Session mode: (Pve|Pvp|Regular)`) and raises `SessionModeDetected`;
+  `ProfileService` subscribes and performs the switch
+  (`SetActiveGameMode(mode, isAuto: true)`), so the auto-switch — and phase
+  1's suppression of it — lives in `ProfileService`. A Kord Breach session
+  runs under PvP rules, so today it is detected as `Pvp` and written into the
+  permanent PvP profile — the contamination path the first phase closes.
 - **Log sync.** `LogSyncService` maps quest events by external task ID
   (`TarkovTask.Ids`); unknown IDs are dropped with only a count surfaced.
   `SettingsService.SyncDaysRange` exists, but `MainWindow.PerformQuestSync`
@@ -99,16 +108,19 @@ PRD), and phases 3 through 5 chain behind phase 2.
 ```mermaid
 graph LR
   P1[1 seasonal-profile]
-  P2[2 versioned-data-channel] --> P3[3 quest-data-1-1-refresh] --> P4[4 quest-loyalty-gating] --> P5[5 kappa-collector-1-1]
+  P2[2 versioned-data-channel] --> P3[3 quest-data-1-1-refresh]
+  P3 --> P4[4 quest-loyalty-gating] --> P5[5 kappa-collector-1-1]
   P3 --> P5
   B[triggered backlog]
 ```
 
 1. **seasonal-profile** — ready now, no upstream dependency. Adds the seasonal
-   profile to `ProfileService` with a manual switcher; extends the reset action
-   to clear item inventory along with quest and hideout progress; wires the
-   existing `SyncDaysRange` setting through `MainWindow.PerformQuestSync` so a
-   season start stops ingesting pre-season logs; and lands the first
+   profile to `ProfileService` with a manual switcher; extends the reset
+   action — today it clears only quest and hideout progress — to also clear
+   item inventory, the profile's `ProfileSettings` rows, and
+   profile-attributed `RaidHistory` rows (the roadmap PRD's R4 scope); wires
+   the existing `SyncDaysRange` setting through `MainWindow.PerformQuestSync`
+   so a season start stops ingesting pre-season logs; and lands the first
    fixture-based unit tests for `LogSyncService` and `EftRaidEventService` as
    the safety net for any parser change. Whether a seasonal session is
    distinguishable in the logs is this phase's open question, settled by
@@ -144,13 +156,15 @@ graph LR
    reachable, inside the phase or as a follow-up re-run.
 4. **quest-loyalty-gating** — depends on phase 3's data. The app side of
    loyalty: `QuestDbService` reads the new column behind `ColumnExistsAsync`;
-   the profile drawer gains eight per-trader loyalty inputs (profile-scoped
-   settings, clamped to each trader's maximum level); `GetStatus` gains the
-   loyalty gate folded into `LevelLocked`; quest rows badge "LL2"-style
-   requirements the way they badge "Lv. 15" today; the chip vocabulary is
-   untouched. This phase also audits the hardcoded caps (player level 79,
-   prestige 5, scav rep ±6.0, edition strings) against 1.1 and bumps what
-   moved.
+   the profile drawer gains per-trader loyalty inputs (profile-scoped
+   settings; the trader roster and each trader's maximum level are this
+   phase's decisions — no per-trader max-level catalog exists in the schema
+   today, so the clamp bound is new data the phase must source); `GetStatus`
+   gains the loyalty gate folded into `LevelLocked`; quest rows badge
+   "LL2"-style requirements the way they badge "Lv. 15" today; the chip
+   vocabulary is untouched. This phase also audits the hardcoded caps
+   (player level 79, prestige 5, scav rep ±6.0, edition strings) against 1.1
+   and bumps what moved.
 5. **kappa-collector-1-1** — depends on phases 3 and 4. Extends the Collector
    treatment to the 1.1 conditions — loyalty level 4 across traders, plus the
    Fence reputation threshold (the latter representable with the existing
@@ -161,12 +175,14 @@ graph LR
    earning its own document when triggered: the runtime icon-download fallback
    (trigger: the next patch shipping new items, or the release-coupled publish
    proving painful); the side-task flag and filter (trigger: upstream data
-   exposing the story/side distinction); consolidating the three duplicate
-   map-name tables in `LogSyncService`, `EftRaidEventService`, and
-   `LogMapWatcherService` (trigger: the next map addition forcing edits in all
-   three). If the quest-data phase picks one source and the other later proves
-   clearly superior, revisiting that choice re-enters here as its own
-   triggered item.
+   exposing the story/side distinction); consolidating the duplicate map-name
+   tables (trigger: the next map addition) — two live copies in
+   `LogSyncService` and `EftRaidEventService`, plus a third in
+   `LogMapWatcherService`, which has no live callers today, so that cleanup
+   should consider deleting the dead service outright rather than
+   consolidating a copy nothing reads. If the quest-data phase picks one
+   source and the other later proves clearly superior, revisiting that choice
+   re-enters here as its own triggered item.
 
 ### Cross-phase ground rules
 

@@ -79,8 +79,11 @@ criteria.
 - R3: The Collector page and the kappa gauge count only quests the 1.1 game
   requires.
 - R4: A seasonal profile exists alongside PvP and PvE; switching to it shows
-  only seasonal progress, and resetting it clears quest progress, hideout
-  progress, and item inventory in one action.
+  only seasonal progress, and resetting it clears, in one action, everything
+  the profile owns: quest progress, hideout progress, item inventory,
+  per-profile settings (level, reputation, faction, editions, prestige, DSP
+  count — and loyalty levels once those exist), and profile-attributed raid
+  history.
 - R5: Log sync works against the 1.1 client for permanent characters, and
   seasonal sessions never write into a permanent profile.
 - R6: New 1.1 quests and items appear in the app with icons after the
@@ -136,18 +139,24 @@ whether inside the phase or as a follow-up refresh.
 **Trader loyalty becomes a first-class, manually entered gate.** Loyalty is the
 patch's primary unlock mechanism, so the app models it end to end: per-quest
 requirement data, a per-trader loyalty input in the profile drawer, and a gate
-in the availability engine. Entry is manual — eight small inputs that change
-rarely, since loyalty only rises within a season — because no automatic source
-exists: the game logs the app watches carry no trader standing, and estimating
-loyalty from level and reputation is rejected in Non-Goals.
+in the availability engine. Entry is manual — one small input per
+loyalty-leveled trader, changing rarely since loyalty only rises within a
+season — because no automatic source exists: the game logs the app watches
+carry no trader standing, and estimating loyalty from level and reputation is
+rejected in Non-Goals. Which traders get an input is the loyalty phase's call:
+the app's roster runs to ten, but Fence is already modeled as reputation and
+Lightkeeper access is task-gated, so the roster is deliberately not pinned to
+a number here.
 
 **One rolling seasonal profile, shipped first.** Seasonal support reuses the
 app's existing per-profile data isolation by adding a single seasonal profile
 alongside PvP and PvE. A new profile per season (season 1, season 2, …) was
 rejected: it preserves history the app's sole user does not need, at the cost of
 a profile picker that grows forever. "Start the new season" is instead the
-existing reset action, extended to actually clear everything — today it leaves
-item inventory behind. This phase ships first, before any data work: every
+existing reset action, extended to actually clear everything the profile owns
+— today it clears only quest and hideout progress, leaving item inventory,
+per-profile settings, and raid history behind (R4 enumerates the full scope).
+This phase ships first, before any data work: every
 seasonal raid played today corrupts the permanent PvP profile, and stopping
 active damage beats improving data that is merely stale. It is also the only
 phase with no upstream dependency.
@@ -228,9 +237,10 @@ from the backlog, whichever that moment justifies.
 
 ## Risks
 
-- Until the first two phases ship, availability and Kappa guidance stay wrong.
-  Accepted: the roadmap exists to shorten that window, and the phase order
-  minimizes harm by stopping corruption first.
+- Until the quest-data refresh publishes, quest details and Kappa guidance
+  stay wrong — and availability stays wrong until loyalty gating lands on top
+  of it. Accepted: the roadmap exists to shorten that window, and the phase
+  order minimizes harm by stopping corruption first.
 - The wiki is still settling — the 1.1 pages were mass-edited within two days of
   the patch and are admin-protected until mid-August, so data parsed early may
   be corrected upstream afterward. Accepted: the refresh is repeatable, and
@@ -246,11 +256,12 @@ from the backlog, whichever that moment justifies.
   gate to say otherwise), or their data freezes at the last compatible
   version. Accepted: both outcomes keep the build working, and the app's
   existing update prompt is the path out.
-- After the patch's loyalty recalculation, players must enter eight loyalty
-  levels by hand before availability is accurate; until then, loyalty-gated
-  quests sit at the conservative default (everything above loyalty level 1
-  shows locked). Accepted as the honest default — the drawer is one click away,
-  and under-showing availability beats confidently over-showing it.
+- After the patch's loyalty recalculation, players must enter their trader
+  loyalty levels by hand before availability is accurate; until then,
+  loyalty-gated quests sit at the conservative default (everything above
+  loyalty level 1 shows locked). Accepted as the honest default — the drawer
+  is one click away, and under-showing availability beats confidently
+  over-showing it.
 - Whether seasonal sessions are distinguishable in the game logs is unknown
   until captured. If they are not, profile switching is manual, and a user who
   forgets to switch can still cross-contaminate. The seasonal phase records the
