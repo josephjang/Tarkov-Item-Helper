@@ -10,7 +10,9 @@ For solution-wide commands and architecture overview, see the parent `../CLAUDE.
 # Build this project
 dotnet build TarkovHelper.csproj
 
-# Run application
+# Run application (needs an elevated terminal — the app manifest requires
+# administrator elevation; to run without elevation, launch the built DLL:
+# dotnet bin/Debug/net8.0-windows/TarkovHelper.dll)
 dotnet run --project TarkovHelper.csproj
 
 # Build Release

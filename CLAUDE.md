@@ -18,11 +18,11 @@ dotnet build TarkovHelper/TarkovHelper.csproj
 # Build Release
 dotnet build TarkovHelper/TarkovHelper.csproj -c Release
 
-# Run main application
+# Run main application (needs an elevated terminal — the app manifest requires
+# administrator elevation, so this fails with ERROR_ELEVATION_REQUIRED from a
+# non-elevated shell; to run without elevation, launch the built DLL instead:
+# dotnet TarkovHelper/bin/Debug/net8.0-windows/TarkovHelper.dll)
 dotnet run --project TarkovHelper/TarkovHelper.csproj
-
-# Run with data fetch
-dotnet run --project TarkovHelper/TarkovHelper.csproj -- --fetch
 ```
 
 ## Solution Structure

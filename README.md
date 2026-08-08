@@ -3,113 +3,73 @@
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
+[![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](../../releases/latest)
 
-> **Note**: This is an independently maintained fork of [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper). Releases from this fork use CalVer (`YYYY.M.N`) starting at **v2026.7.0**.
+A Windows desktop companion for Escape from Tarkov that tracks your quest, hideout, and item progress — and keeps it in sync automatically by watching the game's own log files.
 
-A Windows desktop application for tracking Escape from Tarkov quest and hideout progress.
+> **Note**: This is an independently maintained fork of [Zeliper/Tarkov-Item-Helper](https://github.com/Zeliper/Tarkov-Item-Helper). It ships its own releases — versioned CalVer (`YYYY.M.N`), starting at **v2026.7.0** — and continues to add features.
 
-## Key Features
+![Quest tracking in Tarkov Helper](screenshots/quests.png)
 
-Tarkov 1.0 Fully accepted
+## Download
 
-### Quest Management
-- View and search all quests
-- Track quest completion/in-progress status
-- Display prerequisite and follow-up quests
-- Automatically mark prerequisite quests as complete when starting a quest
-- Link to quest wiki pages
+Get **TarkovHelper.zip** from the [latest release](../../releases/latest), extract it anywhere, and run `TarkovHelper.exe`.
 
-### Hideout Management
-- Track construction levels for each hideout station
-- Display required items for each level upgrade
-- Provide trader, skill, and dependent station requirements
+- **Windows** with the [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+- The app asks for **administrator elevation** on launch — [How it works & safety](#how-it-works--safety) explains why
 
-### Required Items Tracking
-- Aggregate items needed for in-progress quests
-- Aggregate items needed for hideout construction
-- Separate tracking for regular items and FIR (Found in Raid) items
-- Calculate owned quantity and remaining required quantity
-- Display item wiki links and icons
+Once installed, the app keeps both itself and its game data up to date automatically.
 
-### Game Log Monitoring
-- Automatically detect quest completion from game logs
-- Support for both BSG Launcher and Steam versions
-- Auto-detect game installation folder
+## Features
 
-### Multi-language Support
-- English / Korean / Japanese support
-- Real-time language switching
+- **Quests** — browse and search every quest; filter by status, trader, map, Kappa, and faction; see objectives, prerequisites, and follow-ups; get recommendations for what to play next
+- **Hideout** — track station levels and see the items, traders, skills, and other stations each upgrade requires
+- **Items** — one aggregated list of everything your quests and hideout upgrades still need, with FIR (Found in Raid) and non-FIR tracked separately against what you own
+- **Collector** — a dedicated checklist for the Collector quest's items
+- **Map** — interactive maps with quest markers and extracts, including in-raid position tracking
+- **Overlay minimap** — an always-on-top minimap for use while playing, controlled by global hotkeys
+- **Game-log sync** — quest started/completed/failed states, game mode, and player level are picked up automatically from the game's log files
+- **PvP/PvE profiles** — separate progress per mode, switched automatically to match the mode you're playing
+- **Automatic updates** — the app updates itself and its game database in the background
+- **Three languages** — English, 한국어, and 日本語, switchable in-app
 
-## Screenshots
+## How it works & safety
 
-<!-- Screenshots coming soon -->
-![Quest List](screenshots/quests.png)
-![Hideout](screenshots/hideout.png)
-![Required Items](screenshots/items.png)
+Tarkov Helper obtains all game state **passively, by reading files the game itself writes**:
 
-## Installation
+- **Log files** — quest and raid events, game mode, and player level come from the game's own logs
+- **Screenshot filenames** — in-raid position comes from the game's screenshot feature, which encodes your coordinates in the filename
 
-### Requirements
-- Windows OS
-- [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+It does **not** read game memory, inject code, or modify any game files. The overlay minimap is an ordinary always-on-top window, and its global hotkeys use a system-wide keyboard hook running in Tarkov Helper's own process — that hook, together with log-file access, is why the app requests administrator elevation at launch.
 
-### Download Release
-Download the latest version from the [Releases](../../releases) page.
+No third-party tool can make promises on Battlestate Games' behalf, so use it at your own discretion.
 
-### Build from Source
-```bash
-# Clone repository
+## Getting started
+
+### Game-log sync
+
+Sync works out of the box: the app auto-detects your Tarkov installation (BSG launcher and Steam) and starts watching its logs. If your install isn't found, open **Settings** → **Tarkov Log Folder** and use **Auto Detect** or **Browse...** to point it at the game's `Logs` folder.
+
+### Where your progress is stored
+
+Your progress lives in a `Config` folder next to `TarkovHelper.exe`. Each install location keeps its own data — so if you move to a new copy of the app and your progress looks empty, use **Settings** → **Data Migration** to import it from the previous location. Game data (quests, items, hideout) ships with the app and updates automatically; there is nothing to fetch manually.
+
+## More screenshots
+
+![Required items aggregation](screenshots/items.png)
+![Hideout upgrade tracking](screenshots/hideout.png)
+
+## Build from source
+
+Requires the [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+
+```powershell
 git clone https://github.com/josephjang/Tarkov-Item-Helper.git
 cd Tarkov-Item-Helper
-
-# Build and run
-dotnet build -c Release
-dotnet run -c Release
+dotnet build TarkovHelper/TarkovHelper.csproj -c Release
 ```
 
-## Usage
-
-### Data Update
-When you first run the app, it automatically fetches the latest quest, item, and hideout data from the [tarkov.dev](https://tarkov.dev) API.
-
-To manually update data:
-```bash
-dotnet run -- --fetch
-```
-
-### Quest Tracking
-1. Check quest list in the **Quests** tab
-2. Mark completion status with checkboxes
-3. Search quests using the search bar
-4. Click on a quest to view details and prerequisite/follow-up quests
-
-### Hideout Tracking
-1. Check station list in the **Hideout** tab
-2. Set the current level for each station
-3. View required items for the next level upgrade
-
-### Required Items
-1. Check all required items in the **Required Items** tab
-2. Track progress by entering owned quantities
-3. FIR items are managed separately
-
-### Game Log Integration
-The app auto-detects your game installation folder to provide notifications when quests are completed.
-
-## Tech Stack
-
-- **Framework**: .NET 8.0, WPF
-- **Language**: C# 13
-- **API**: [tarkov.dev GraphQL API](https://tarkov.dev)
-
-## Data Storage Location
-
-All data is stored in the `Data/` folder:
-- `tasks.json` - Quest data
-- `items.json` - Item data
-- `hideouts.json` - Hideout data
-- `progress.json` - User progress
-- `settings.json` - Language settings
+Then launch `TarkovHelper\bin\Release\net8.0-windows\TarkovHelper.exe` and approve the elevation prompt. (`dotnet run` does not work from a non-elevated terminal, because the app's manifest requires administrator elevation.)
 
 ## License
 
