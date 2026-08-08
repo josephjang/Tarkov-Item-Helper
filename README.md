@@ -3,7 +3,7 @@
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
 [![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
-[![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](../../releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)
 
 A Windows desktop companion for Escape from Tarkov that tracks your quest, hideout, and item progress — and keeps it in sync automatically by watching the game's own log files.
 
@@ -13,7 +13,7 @@ A Windows desktop companion for Escape from Tarkov that tracks your quest, hideo
 
 ## Download
 
-Get **TarkovHelper.zip** from the [latest release](../../releases/latest), extract it anywhere, and run `TarkovHelper.exe`.
+Get **TarkovHelper.zip** from the [latest release](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest), extract it anywhere, and run `TarkovHelper.exe`.
 
 - **Windows** with the [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
 - The app asks for **administrator elevation** on launch — [How it works & safety](#how-it-works--safety) explains why
