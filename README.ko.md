@@ -1,8 +1,8 @@
 # TarkovHelper
 
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
-[![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
-[![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
+[![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README.ko.md)
+[![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README.ja.md)
 [![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)
 
 Escape from Tarkov의 퀘스트, 은신처, 아이템 진행 상황을 추적하고, 게임이 남기는 로그 파일을 감시해 자동으로 동기화하는 Windows 데스크톱 도우미입니다.
