@@ -1,4 +1,4 @@
-# EFT Log Event Service
+# EftRaidEventService
 
 EFT 게임 로그를 실시간 모니터링하여 레이드 이벤트를 감지하고 구독할 수 있는 서비스입니다.
 

@@ -61,9 +61,10 @@ legacy documents in their original format.
 
 Pure reference/analysis docs (DB schemas, system analyses, log-format notes — anything
 describing how the system currently works rather than planned work) live directly under
-root `docs/` too. `TarkovDBEditor/docs/` is a separate, smaller location for that
-project's own internal implementation notes (wiki-parsing quirks, test case tracking) —
-not repo-wide, so it stays put.
+root `docs/`, indexed in `docs/README.md` along with their conventions (kebab-case
+filenames, new docs in English). `TarkovDBEditor/docs/` is a separate, smaller location
+for that project's own internal implementation notes (wiki-parsing quirks, test case
+tracking) — not repo-wide, so it stays put.
 
 ## Writing Conventions
 
