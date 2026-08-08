@@ -45,7 +45,7 @@ docs/
 │   ├── *.md, *.spec.md        # 결정 문서 (평면 구조, 이동 없음)
 │   ├── templates/             # prd-template.md, spec-template.md
 │   └── archive/               # 동결된 레거시 문서 (YYYY-MM/, 형식·위치 불변)
-└── (그 외 모든 파일)            # 참고 문서 (예: DatabaseSchema.md)
+└── (그 외 모든 파일)            # 참고 문서 (예: database-schema.md)
 ```
 
 문서는 평면으로 놓이고 이동하지 않습니다 — **파일명이 영구 주소**입니다. `archive/`는
