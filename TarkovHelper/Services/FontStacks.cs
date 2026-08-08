@@ -12,7 +12,7 @@ namespace TarkovHelper.Services;
 /// embedded right after it as a backstop for any glyph Bender lacks. Japanese
 /// uses the game's face as a system reference: Meiryo (Microsoft-licensed,
 /// cannot ship) with a Yu Gothic fallback. See
-/// docs/PRDs/feature-eft-font-stack.md for the decision trail.
+/// feature-eft-font-stack.md for the decision trail.
 /// </summary>
 public static class FontStacks
 {

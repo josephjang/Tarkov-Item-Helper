@@ -1,4 +1,4 @@
-# PRDs (결정 문서)
+# 결정 문서 (Decision Docs)
 
 이 폴더는 저장소 전체(TarkovHelper + TarkovDBEditor + 프로젝트 간 교차 작업)의
 **결정 문서(decision docs)** 를 두는 단일 위치입니다. 결정 문서는 두 종류이고,
@@ -7,10 +7,7 @@
 - **PRD** (`name.md`) — 제품 결정: 사용자에게 무엇이 왜 바뀌어야 하는가
 - **Spec** (`name.spec.md`) — 기술 설계: 어떤 서비스/파일/데이터 흐름이 어떻게 바뀌는가
 
-변경에 따라 하나만 쓰거나, 둘 다 쓰거나, 아예 안 쓸 수 있습니다. 폴더 이름 `PRDs`는
-이 구분이 생기기 전의 이름이라 두 종류 중 하나만 가리키지만 그대로 둡니다 — 이름을
-바꿔서 얻는 것에 비해 참조 churn이 크기 때문입니다
-(`feature-decision-docs-process.spec.md`의 Technical Decisions 참고).
+변경에 따라 하나만 쓰거나, 둘 다 쓰거나, 아예 안 쓸 수 있습니다.
 
 ## 핵심 원칙
 
@@ -43,7 +40,7 @@
 
 ```
 docs/
-├── PRDs/
+├── decisions/
 │   ├── README.md              # 이 파일
 │   ├── *.md, *.spec.md        # 결정 문서 (평면 구조, 이동 없음)
 │   ├── templates/             # prd-template.md, spec-template.md

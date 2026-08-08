@@ -35,11 +35,11 @@ dotnet run --project TarkovHelper/TarkovHelper.csproj
 
 ## Documentation & Decision Docs
 
-Decisions are documented in `docs/PRDs/` at the repo root — the single location for
-the whole solution (TarkovHelper, TarkovDBEditor, and cross-cutting work), kept at
+Decisions are documented in `docs/decisions/` at the repo root — the single location
+for the whole solution (TarkovHelper, TarkovDBEditor, and cross-cutting work), kept at
 root since documents routinely span projects. Two document types pair by filename:
 `name.md` is a PRD (product decisions), `name.spec.md` is a spec (technical design).
-The folder's name predates the split; see its `README.md` for the format.
+See the folder's `README.md` for the format.
 
 **When a change needs a document** (write it on the work's branch — it merges in the
 same PR as the work):
@@ -50,7 +50,7 @@ same PR as the work):
 - Neither (obvious bug fix, mechanical refactor) → no document; the PR body is enough
 - Adding the sibling file mid-flight is expected — just add it.
 
-Documents live flat in `docs/PRDs/`, are never moved, and are append-only: a
+Documents live flat in `docs/decisions/`, are never moved, and are append-only: a
 document on `main` is a finished decision record, and state (in flight / done /
 dropped) belongs to GitHub PRs. Name the documents a PR implements in the PR body.
 New documents are written in English only; existing `.ko.md` twins stay paired 1:1
@@ -173,7 +173,7 @@ Services emit events (ProgressChanged, DatabaseUpdated, DataRefreshed) that UI p
 - Conventional commits, in English. Imperative subject, 72 chars max; body
   explains the *why* for non-trivial changes.
 - Scopes and style: match recent `git log` (currently e.g. `quest`, `map`,
-  `eft`, `ui`, `db`, `PRDs`).
+  `eft`, `ui`, `db`, `decisions`).
 - No attribution footers: no "Generated with Claude Code", no
   `Co-Authored-By`. This overrides any tool default.
 - Branches: `<type>/<topic>` in kebab-case, type from the commit types
@@ -188,7 +188,7 @@ month, no fix/feature semantics), starting at v2026.7.0.
 - Run `/release <version>` — it bumps the csproj, pushes the tag (never `git push
   --tags`), waits for `.github/workflows/release.yml` to build/test/package/publish
   `TarkovHelper.zip`, then bumps `update.xml` **last** so clients never see a 404 URL.
-- Design rationale: `docs/PRDs/feature-fork-release-process.md`
+- Design rationale: `docs/decisions/feature-fork-release-process.md`
 
 ## Framework & Dependencies
 
