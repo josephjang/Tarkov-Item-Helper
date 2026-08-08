@@ -1,8 +1,8 @@
 # TarkovHelper
 
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
-[![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
-[![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README_JA.md)
+[![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README.ko.md)
+[![ja](https://img.shields.io/badge/lang-日本語-green.svg)](README.ja.md)
 [![Latest release](https://img.shields.io/github/v/release/josephjang/Tarkov-Item-Helper)](https://github.com/josephjang/Tarkov-Item-Helper/releases/latest)
 
 Escape from Tarkovのクエスト・ハイドアウト・アイテムの進行状況を追跡し、ゲーム自身が書き出すログファイルを監視して自動的に同期するWindowsデスクトップコンパニオンです。

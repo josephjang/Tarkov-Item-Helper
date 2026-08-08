@@ -134,7 +134,7 @@ the same structure and the same staleness.
   project.
 - R9: No compatibility claim tied to a specific game patch level appears
   anywhere in the READMEs.
-- R10: `README.md`, `README_KR.md`, and `README_JA.md` are content-identical
+- R10: `README.md`, `README.ko.md`, and `README.ja.md` are content-identical
   (modulo language and the Korean-UI screenshot set), and all screenshots show
   the current UI.
 
@@ -225,7 +225,9 @@ variants was considered (three copies triple the drift surface) and
 rejected: the app itself ships in these three languages and the variants
 already exist. The mitigation is the same rule the decision docs use: all
 three update in the same PR, content-identical, English authoritative on
-conflict. Screenshots: the English and Japanese READMEs share the English-UI
+conflict. The variants are also renamed from `README_KR.md`/`README_JA.md`
+to `README.ko.md`/`README.ja.md`, the conventional ISO 639-1 language-code
+naming this repository's decision docs already use. Screenshots: the English and Japanese READMEs share the English-UI
 captures; the Korean README keeps its Korean-UI set. A third capture set for
 Japanese was considered and rejected as maintenance weight without
 commensurate value.
