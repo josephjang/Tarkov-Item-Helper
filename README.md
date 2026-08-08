@@ -28,7 +28,7 @@ Once installed, the app keeps both itself and its game data up to date automatic
 - **Collector**: a dedicated checklist for the Collector quest's items
 - **Map**: interactive maps with quest markers and extracts, including in-raid position tracking
 - **Overlay minimap**: an always-on-top minimap for use while playing, controlled by global hotkeys
-- **Game-log sync**: quest started/completed/failed states, game mode, and player level are picked up automatically from the game's log files
+- **Game-log sync**: quest started/completed/failed states and game mode are picked up automatically from the game's log files
 - **PvP/PvE profiles**: separate progress per mode, switched automatically to match the mode you're playing
 - **Automatic updates**: the app updates itself and its game database in the background
 - **Three languages**: English, 한국어, and 日本語, switchable in-app
@@ -37,7 +37,7 @@ Once installed, the app keeps both itself and its game data up to date automatic
 
 Tarkov Helper obtains all game state **passively, by reading files the game itself writes**:
 
-- **Log files**: quest and raid events, game mode, and player level come from the game's own logs
+- **Log files**: quest and raid events and game mode come from the game's own logs
 - **Screenshot filenames**: in-raid position comes from the game's screenshot feature, which encodes your coordinates in the filename
 
 It does **not** read game memory, inject code, or modify any game files. The overlay minimap is an ordinary always-on-top window, and its global hotkeys use a system-wide keyboard hook running in Tarkov Helper's own process. That hook, together with log-file access, is why the app requests administrator elevation at launch.
@@ -49,6 +49,10 @@ No third-party tool can make promises on Battlestate Games' behalf, so use it at
 ### Game-log sync
 
 Sync works out of the box: the app auto-detects your Tarkov installation (BSG launcher and Steam) and starts watching its logs. If your install isn't found, open **Settings** → **Tarkov Log Folder** and use **Auto Detect** or **Browse...** to point it at the game's `Logs` folder.
+
+### Map position tracking
+
+To update your position on the **Map** tab during a raid, press the game's screenshot key. The app reads the coordinates from the new screenshot's filename; nothing updates on its own without a screenshot.
 
 ### Where your progress is stored
 
